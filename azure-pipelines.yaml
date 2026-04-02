@@ -79,3 +79,5 @@ stages:
                   serviceConnection: ${{ deployment.service_connection }}
                   product: ${{ variables.product }}
                   terraformInitSubscription: ${{ variables.terraformInitSubscription }}
+                  ${{ if eq(deployment.environment, 'nonprod') }}:
+                    initCommandOptions: -backend-config=resource_group_name=azure-control-stg-rg

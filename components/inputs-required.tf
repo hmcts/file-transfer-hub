@@ -1,8 +1,3 @@
-variable "hub_subscription_id" {
-  type        = string
-  description = "The Subscription ID of the Hub Subscription."
-}
-
 variable "env" {
   description = "The environment (e.g., dev, test, prod)"
   type        = string

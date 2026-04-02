@@ -1,0 +1,43 @@
+# ── Version control ───────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Docker Compose (not needed inside the image) ─────────────────
+docker-compose.yml
+docker-compose.override.yml
+compose.yml
+compose.override.yml
+
+# ── Environment and secrets ──────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# ── SFTP forwarding keys (mounted at runtime, never baked in) ────
+sftp-forward/
+
+# ── Documentation ────────────────────────────────────────────────
+README.md
+LICENSE
+CONTRIBUTING.md
+*.md
+docs/
+
+# ── Editor and OS files ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# ── CI/CD ────────────────────────────────────────────────────────
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# ── Misc ─────────────────────────────────────────────────────────
+.dockerignore

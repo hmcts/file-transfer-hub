@@ -1,0 +1,81 @@
+# ═══════════════════════════════════════════════════════════════════
+#  FTPS Server + SFTP Forwarder
+#  Receives files via implicit FTPS (990) and forwards to a
+#  configurable SFTP endpoint automatically.
+# ═══════════════════════════════════════════════════════════════════
+services:
+  ftps:
+    build: .
+    container_name: ftps-server
+    restart: unless-stopped
+
+    environment:
+      # ── FTPS server config ────────────────────────────────────
+      PASV_ADDRESS: "ftps.example.co.uk"
+      FTP_USER_PASS: "${FTP_USER_PASS:?Set FTP_USER_PASS in .env or environment}"
+      LE_DOMAIN: "ftps.example.co.uk"
+      LE_EMAIL: "admin@example.co.uk"
+
+      # ── Development mode ──────────────────────────────────────
+      # Set to "true" to disable TLS entirely (plain FTP).
+      # DO NOT enable in production.
+      DEV_MODE: "${DEV_MODE:-false}"
+
+      # ── SFTP forwarding config ────────────────────────────────
+      SFTP_FWD_HOST: "${SFTP_FWD_HOST:-}"
+      SFTP_FWD_PORT: "${SFTP_FWD_PORT:-22}"
+      SFTP_FWD_USER: "${SFTP_FWD_USER:-}"
+      SFTP_FWD_KEY: "/var/lib/sftp-forward/ssh/id_ed25519"
+      SFTP_FWD_REMOTE_DIR: "${SFTP_FWD_REMOTE_DIR:-/incoming}"
+      SFTP_FWD_KNOWN_HOSTS: "/var/lib/sftp-forward/ssh/known_hosts"
+      SFTP_FWD_RETRIES: "${SFTP_FWD_RETRIES:-3}"
+      SFTP_FWD_RETRY_DELAY: "${SFTP_FWD_RETRY_DELAY:-10}"
+      SFTP_FWD_DELETE_AFTER: "${SFTP_FWD_DELETE_AFTER:-false}"
+
+    ports:
+      - "990:990"
+      - "10242-11034:10242-11034"
+      - "80:80"
+
+    volumes:
+      - ftps-uploads:/home/ftpuser/ftp/uploads
+      - ftps-certs:/etc/vsftpd/certs
+      - ftps-letsencrypt:/etc/letsencrypt
+      - ./sftp-forward:/var/lib/sftp-forward/ssh:ro
+      - sftp-forward-state:/var/lib/sftp-forward
+      - ftps-logs:/var/log/vsftpd
+      - sftp-forward-logs:/var/log/sftp-forward
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test: >
+        sh -c '
+          if [ "$DEV_MODE" = "true" ]; then
+            echo QUIT | nc 127.0.0.1 990 2>/dev/null | grep -qi ftp
+          else
+            echo | openssl s_client -connect 127.0.0.1:990 -tls1_2 2>/dev/null | grep -q CONNECTED
+          fi &&
+          (pgrep -f sftp-forwarder > /dev/null 2>&1 || [ -z "$SFTP_FWD_HOST" ])
+        '
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  ftps-uploads:
+  ftps-certs:
+  ftps-letsencrypt:
+  sftp-forward-state:
+  ftps-logs:
+  sftp-forward-logs:

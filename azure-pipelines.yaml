@@ -80,4 +80,4 @@ stages:
                   product: ${{ variables.product }}
                   terraformInitSubscription: ${{ variables.terraformInitSubscription }}
                   ${{ if eq(deployment.environment, 'nonprod') }}:
-                    initCommandOptions: -backend-config=resource_group_name=azure-control-stg-rg
+                    backendResourceGroupName: azure-control-stg-rg

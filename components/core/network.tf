@@ -36,7 +36,7 @@ module "networking" {
         default = {
           address_prefix         = "0.0.0.0/0"
           next_hop_type          = "VirtualAppliance"
-          next_hop_in_ip_address = var.next_hop_ip_address
+          next_hop_in_ip_address = var.hub.next_hop_ip_address
         }
       }
     }
@@ -82,8 +82,8 @@ module "vnet_peer_hub" {
     }
     target = {
       name           = "hub-to-${module.networking.vnet_names[local.vnet_key]}-${var.env}"
-      vnet           = var.hub_vnet_name
-      resource_group = var.hub_resource_group_name
+      vnet           = var.hub.vnet_name
+      resource_group = var.hub.resource_group_name
     }
   }
 

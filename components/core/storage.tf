@@ -1,7 +1,7 @@
 module "storage" {
   source                     = "github.com/hmcts/cnp-module-storage-account?ref=4.x"
   env                        = var.env
-  storage_account_name       = "${replace(local.name, "-", "")}storage"
+  storage_account_name       = "${replace(local.name_short, "-", "")}stor"
   resource_group_name        = azurerm_resource_group.this.name
   location                   = azurerm_resource_group.this.location
   account_kind               = var.storage_account_kind

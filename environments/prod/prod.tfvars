@@ -1,7 +1,7 @@
 address_space = {
-  vnet           = [""]
-  general_subnet = [""]
-  compute_subnet = [""]
+  vnet           = ["10.11.10.0/24"]
+  general_subnet = ["10.11.10.0/26"]
+  compute_subnet = ["10.11.10.64/26"]
 }
 
 hub = {

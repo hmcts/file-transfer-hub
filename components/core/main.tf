@@ -23,7 +23,7 @@ resource "azurerm_application_insights" "this" {
 }
 
 resource "azurerm_key_vault" "this" {
-  name                        = "${local.name}-kv"
+  name                        = "${local.name_short}-kv"
   resource_group_name         = azurerm_resource_group.this.name
   location                    = azurerm_resource_group.this.location
   sku_name                    = "standard"

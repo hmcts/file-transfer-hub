@@ -53,6 +53,7 @@ locals {
 }
 
 data "azurerm_subscription" "current" {}
+data "azurerm_client_config" "current" {}
 
 module "ctags" {
   source = "github.com/hmcts/terraform-module-common-tags"
@@ -61,4 +62,11 @@ module "ctags" {
   environment  = var.env
   product      = var.product
   expiresAfter = "3000-01-01"
+}
+
+data "azurerm_private_dns_zone" "privatelink" {
+  for_each            = toset(local.private_dns_zone_names)
+  name                = each.key
+  resource_group_name = "core-infra-intsvc-rg"
+  provider            = azurerm.private_dns
 }

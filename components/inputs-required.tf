@@ -19,9 +19,14 @@ variable "address_space" {
     general_subnet = list(string)
     compute_subnet = list(string)
   })
+  description = "Address space values for the vnet and subnets."
 }
 
-variable "next_hop_ip_address" {
-  type        = string
-  description = "The IP address of the next hop for the default route in the route table."
+variable "hub" {
+  type = object({
+    next_hop_ip_address = string
+    vnet_name           = string
+    resource_group_name = string
+  })
+  description = "Values reltated to the hub this spoke should peer to."
 }

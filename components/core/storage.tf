@@ -1,0 +1,12 @@
+module "storage" {
+  source                     = "github.com/hmcts/cnp-module-storage-account?ref=4.x"
+  env                        = var.env
+  storage_account_name       = "${replace(local.name, "-", "")}storage"
+  resource_group_name        = azurerm_resource_group.this.name
+  location                   = azurerm_resource_group.this.location
+  account_kind               = var.storage_account_kind
+  account_replication_type   = var.storage_replication_type
+  common_tags                = module.ctags.common_tags
+  private_endpoint_subnet_id = "/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/${module.networking.resource_group_name}/providers/Microsoft.Network/virtualNetworks/${module.networking.vnet_names[local.vnet_key]}/subnets/${module.networking.subnet_names["${local.vnet_key}-general"]}"
+  sa_subnets                 = local.cft_ptl_subnet_ids
+}

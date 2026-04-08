@@ -30,7 +30,9 @@ parameters:
         environment: "nonprod"
         component: "core"
         service_connection: "HMCTS-HUB-NONPROD-INTSVC"
-        dependsOn: "TerraformPrecheck"
+        dependsOn: 
+          - "TerraformPrecheck"
+          - "AppBuildPublish"
       - deployment: "prod_core"
         environment: "prod"
         component: "core"
@@ -91,6 +93,7 @@ stages:
                   .
 
   - stage: TerraformPrecheck
+    dependsOn: []
     jobs:
       - job:
         pool:

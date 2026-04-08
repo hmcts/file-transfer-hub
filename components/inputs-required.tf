@@ -30,3 +30,17 @@ variable "hub" {
   })
   description = "Values reltated to the hub this spoke should peer to."
 }
+
+variable "image" {
+  type        = string
+  description = "The container image to deploy in Container Apps."
+}
+
+variable "container_app" {
+  type = object({
+    image                 = string
+    cpu                   = optional(number, 2)
+    memory                = optional(string, "8Gi")
+    workload_profile_type = optional(string, "D4")
+  })
+}

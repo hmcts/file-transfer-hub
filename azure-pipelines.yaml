@@ -30,14 +30,26 @@ parameters:
         environment: "nonprod"
         component: "core"
         service_connection: "HMCTS-HUB-NONPROD-INTSVC"
+        dependsOn: "TerraformPrecheck"
+      - deployment: "nonprod_container_app"
+        environment: "nonprod"
+        component: "container_app"
+        service_connection: "HMCTS-HUB-NONPROD-INTSVC"
         dependsOn: 
-          - "TerraformPrecheck"
+          - "nonprod_core"
           - "AppBuildPublish"
       - deployment: "prod_core"
         environment: "prod"
         component: "core"
         service_connection: "HMCTS-HUB-PROD-INTSVC"
         dependsOn: "nonprod_core"
+      - deployment: "prod_container_app"
+        environment: "prod"
+        component: "container_app"
+        service_connection: "HMCTS-HUB-PROD-INTSVC"
+        dependsOn: 
+          - "prod_core"
+          - "nonprod_container_app"
 
 
 variables:

@@ -50,7 +50,8 @@ variables:
   - template: vars/input-variables.yaml@cnp-azuredevops-libraries
 
 stages:
-  - stage: App Build & Publish
+  - stage: AppBuildPublish
+    displayName: "App Build & Publish"
     jobs:
       - job: BuildAndPublish
         pool:

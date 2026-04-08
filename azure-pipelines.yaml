@@ -67,7 +67,7 @@ stages:
               azureSubscription: DCD-CNP-Prod
               scriptType: bash
               scriptLocation: inlineScript
-              workingDirectory: $(System.DefaultWorkingDirectory)/SMBRelay
+              workingDirectory: $(System.DefaultWorkingDirectory)/app
               inlineScript: |
                 echo "Starting ACR build for $(imageRepository)"
 

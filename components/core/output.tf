@@ -3,5 +3,5 @@ output "log_analytics_workspace_id" {
 }
 
 output "container_apps_subnet_id" {
-  value = module.network.subnet_ids["${local.vnet_key}-compute"]
+  value = module.networking.subnet_ids["${local.vnet_key}-compute"]
 }

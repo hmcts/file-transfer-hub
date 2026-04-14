@@ -116,6 +116,7 @@ stages:
                   -t $(imageRepository):$(Build.BuildId) \
                   -t $(imageRepository):$BRANCH_NAME \
                   -t $(imageRepository):$BRANCH_NAME-$(Build.BuildId) \
+                  .
 
   - ${{ each deployment in parameters.environment_components }}:
       - stage: ${{ deployment.deployment }}

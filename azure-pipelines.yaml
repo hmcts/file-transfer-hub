@@ -66,6 +66,20 @@ variables:
     value: file-transfer-hub/ftps-server
 
 stages:
+  - stage: TerraformPrecheck
+    dependsOn: []
+    jobs:
+      - job:
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - template: steps/terraform-precheck.yaml@cnp-azuredevops-libraries
+            parameters:
+              keyvaultName: "infra-vault-nonprod"
+              keyvaultSecret: "azure-devops-sp-token"
+              serviceConnection: "azurerm-sandbox"
+              overrideAction: ${{ parameters.overrideAction }}
+
   - stage: AppBuildPublish
     displayName: "App Build & Publish"
     jobs:
@@ -102,25 +116,16 @@ stages:
                   -t $(imageRepository):$(Build.BuildId) \
                   -t $(imageRepository):$BRANCH_NAME \
                   -t $(imageRepository):$BRANCH_NAME-$(Build.BuildId) \
-                  .
-
-  - stage: TerraformPrecheck
-    dependsOn: []
-    jobs:
-      - job:
-        pool:
-          vmImage: ${{ variables.agentImage }}
-        steps:
-          - template: steps/terraform-precheck.yaml@cnp-azuredevops-libraries
-            parameters:
-              keyvaultName: "infra-vault-nonprod"
-              keyvaultSecret: "azure-devops-sp-token"
-              serviceConnection: "azurerm-sandbox"
-              overrideAction: ${{ parameters.overrideAction }}
 
   - ${{ each deployment in parameters.environment_components }}:
       - stage: ${{ deployment.deployment }}
         dependsOn: ${{ deployment.dependsOn }}
+        ${{ if eq(deployment.component, 'container-app') }}:
+          variables:
+            - name: log_analytics_workspace_id
+              value: $[stageDependencies.${{ deployment.environment }}_core.TerraformPlanApply.outputs['terraformOutputs.log_analytics_workspace_id']]
+            - name: container_apps_subnet_id
+              value: $[stageDependencies.${{ deployment.environment }}_core.TerraformPlanApply.outputs['terraformOutputs.container_apps_subnet_id']]
         jobs:
           - job: TerraformPlanApply
             pool: hmcts-cftptl-agent-pool
@@ -136,3 +141,29 @@ stages:
                   terraformInitSubscription: ${{ variables.terraformInitSubscription }}
                   ${{ if eq(deployment.environment, 'nonprod') }}:
                     backendResourceGroupName: azure-control-stg-rg
+                  ${{ if eq(deployment.component, 'container-app') }}:
+                    planCommandOptions: >-
+                      -var "log_analytics_workspace_id=$(log_analytics_workspace_id)"
+                      -var "container_apps_subnet_id=$(container_apps_subnet_id)"
+              - ${{ if eq(deployment.component, 'core') }}:
+                - task: AzureCLI@2
+                  name: terraformOutputs
+                  displayName: "Capture Terraform Outputs"
+                  inputs:
+                    azureSubscription: ${{ deployment.service_connection }}
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      cd $(System.DefaultWorkingDirectory)/components/core
+
+                      export ARM_CLIENT_ID=$servicePrincipalId
+                      export ARM_CLIENT_SECRET=$servicePrincipalKey
+                      export ARM_TENANT_ID=$tenantId
+                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                      LOG_ANALYTICS_ID=$(terraform output -raw log_analytics_workspace_id)
+                      SUBNET_ID=$(terraform output -raw container_apps_subnet_id)
+
+                      echo "##vso[task.setvariable variable=log_analytics_workspace_id;isOutput=true]$LOG_ANALYTICS_ID"
+                      echo "##vso[task.setvariable variable=container_apps_subnet_id;isOutput=true]$SUBNET_ID"

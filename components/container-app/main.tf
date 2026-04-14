@@ -8,9 +8,9 @@ module "container_app" {
   }
 
   product   = var.product
-  component = var.component
+  component = "file-transfer-hub"
   env       = var.env
-  project   = var.project
+  project   = "hub"
 
   common_tags = module.ctags.common_tags
 
@@ -40,6 +40,7 @@ module "container_app" {
           image  = var.container_app.image
           cpu    = var.container_app.cpu
           memory = var.container_app.memory
+          env    = []
         }
       }
 

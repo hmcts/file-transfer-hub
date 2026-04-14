@@ -11,7 +11,7 @@ Built to satisfy third-party integration requirements including mandatory passiv
 | Capability | Detail |
 |---|---|
 | **Implicit FTPS** | Port 990, TLS ≥ 1.2 only, strong cipher suite |
-| **Passive data ports** | Restricted range 10242–11034 |
+| **Passive data ports** | Restricted range 1024–1034 |
 | **TLS session reuse** | Disabled (`require_ssl_reuse=NO`) for client compatibility |
 | **TLS certificates** | Let's Encrypt (auto-renew) or bring your own — always a dedicated keypair, never the host SSH key |
 | **Development mode** | `DEV_MODE=true` disables TLS entirely — no certificates needed for local dev |
@@ -236,7 +236,7 @@ IP allow-listing is enforced at the **network layer**, not inside the container.
 | AWS ECS / Fargate | Security Group on the ENI |
 | Kubernetes (any) | `NetworkPolicy` or cloud firewall |
 
-Restrict inbound traffic on ports **990** and **10242–11034** to the approved source IP ranges only.
+Restrict inbound traffic on ports **990** and **1024–1034** to the approved source IP ranges only.
 
 ---
 

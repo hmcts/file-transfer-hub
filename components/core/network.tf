@@ -46,6 +46,26 @@ module "networking" {
     nsg = {
       subnets = ["${local.vnet_key}-general", "${local.vnet_key}-compute"]
       rules = {
+        allow_ftps_control = {
+          priority                   = 100
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "Tcp"
+          source_port_range          = "*"
+          destination_port_range     = "990"
+          source_address_prefix      = "Internet"
+          destination_address_prefix = "*"
+        }
+        allow_ftps_passive_data = {
+          priority                   = 110
+          direction                  = "Inbound"
+          access                     = "Allow"
+          protocol                   = "Tcp"
+          source_port_range          = "*"
+          destination_port_range     = "1024-1034"
+          source_address_prefix      = "Internet"
+          destination_address_prefix = "*"
+        }
         allow_vnet_inbound = {
           priority                   = 4010
           direction                  = "Inbound"

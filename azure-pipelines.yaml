@@ -82,6 +82,7 @@ stages:
 
   - stage: AppBuildPublish
     displayName: "App Build & Publish"
+    dependsOn: []
     jobs:
       - job: BuildAndPublish
         pool:

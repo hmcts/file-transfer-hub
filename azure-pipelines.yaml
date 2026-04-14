@@ -159,6 +159,8 @@ stages:
                     inlineScript: |
                       cd $(System.DefaultWorkingDirectory)/components/core
 
+                      ls -la
+
                       export ARM_CLIENT_ID=$servicePrincipalId
                       export ARM_CLIENT_SECRET=$servicePrincipalKey
                       export ARM_TENANT_ID=$tenantId

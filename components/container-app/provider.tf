@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "4.59.0"
     }
+    azapi = {
+      source  = "Azure/azapi"
+      version = "2.4.0"
+    }
   }
   backend "azurerm" {}
 }
@@ -24,3 +28,5 @@ provider "azurerm" {
   features {}
   subscription_id = local.private_dns_sub_id
 }
+
+provider "azapi" {}

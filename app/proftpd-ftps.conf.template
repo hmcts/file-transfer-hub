@@ -1,0 +1,35 @@
+ServerName                      "HMCTS FTPS service"
+ServerType                      standalone
+UseIPv6                         off
+Port                            ${FTPS_LISTEN_PORT}
+Umask                           022 022
+MaxInstances                    30
+DefaultRoot                     ~
+RequireValidShell               off
+AuthOrder                       mod_auth_pam.c* mod_auth_unix.c
+RootLogin                       off
+AllowOverwrite                  on
+UseReverseDNS                   off
+MasqueradeAddress               ${FTPS_PUBLIC_IP}
+PassivePorts                    ${FTPS_PASSIVE_MIN_PORT} ${FTPS_PASSIVE_MAX_PORT}
+AllowForeignAddress             on
+DisplayLogin                    ${FTPS_BANNER_PATH}
+TransferLog                     /var/log/proftpd/xferlog
+SystemLog                       /var/log/proftpd/proftpd.log
+
+<Limit LOGIN>
+  AllowUser ${FTPS_LOCAL_USER}
+  DenyAll
+</Limit>
+
+<IfModule mod_tls.c>
+  TLSEngine                     on
+  TLSLog                        /var/log/proftpd/tls.log
+  TLSProtocol                   TLSv1.2 TLSv1.3
+  TLSRSACertificateFile         ${FTPS_CERTIFICATE_PATH}
+  TLSRSACertificateKeyFile      ${FTPS_CERTIFICATE_PATH}
+  TLSRequired                   on
+  TLSOptions                    NoSessionReuseRequired UseImplicitSSL
+  TLSVerifyClient               off
+  TLSRenegotiate                none
+</IfModule>

@@ -1,57 +1,25 @@
-FROM alpine:3.20
+FROM ubuntu:22.04
 
-# ── Install packages ────────────────────────────────────────────────
-RUN apk add --no-cache \
-      vsftpd \
-      openssl \
-      openssh-client \
-      certbot \
-      inotify-tools \
-      tini \
-      bash \
-      dcron \
-      shadow \
-      netcat-openbsd     # used by healthcheck in DEV_MODE
+ENV DEBIAN_FRONTEND=noninteractive
 
-# ── Create FTP user (nologin shell, chrooted later by vsftpd) ──────
-RUN addgroup -S ftpusers && \
-    adduser -S -G ftpusers -h /home/ftpuser -s /sbin/nologin ftpuser && \
-    mkdir -p /home/ftpuser/ftp/uploads && \
-    chown ftpuser:ftpusers /home/ftpuser/ftp/uploads && \
-    chmod 755 /home/ftpuser/ftp && \
-    chmod 775 /home/ftpuser/ftp/uploads
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    gettext-base \
+    lftp \
+    openssh-client \
+    openssl \
+    proftpd-core \
+    proftpd-mod-crypto \
+    && rm -rf /var/lib/apt/lists/*
 
-# ── Certificate directory (separate keypair – NOT the host SSH key) ─
-RUN mkdir -p /etc/vsftpd/certs && \
-    chmod 700 /etc/vsftpd/certs
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY ftps-storage-forward.sh /usr/local/bin/ftps-storage-forward.sh
+COPY proftpd-ftps.conf.template /etc/proftpd/proftpd-ftps.conf.template
 
-# ── SFTP forwarder directories ─────────────────────────────────────
-RUN mkdir -p /var/lib/sftp-forward/pending \
-             /var/lib/sftp-forward/forwarded \
-             /var/lib/sftp-forward/failed \
-             /var/lib/sftp-forward/ssh \
-             /var/log/sftp-forward
+RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/ftps-storage-forward.sh
 
-# ── Logging ─────────────────────────────────────────────────────────
-RUN mkdir -p /var/log/vsftpd
+EXPOSE 990 1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034
 
-# ── Copy configuration files ───────────────────────────────────────
-COPY vsftpd.conf         /etc/vsftpd/vsftpd.conf
-COPY entrypoint.sh       /entrypoint.sh
-COPY sftp-forwarder.sh   /usr/local/bin/sftp-forwarder.sh
-COPY cleanup-cron        /etc/crontabs/root
-
-RUN chmod +x /entrypoint.sh /usr/local/bin/sftp-forwarder.sh
-
-# ── Ports ───────────────────────────────────────────────────────────
-EXPOSE 990 10242-11034
-
-# ── Volumes ─────────────────────────────────────────────────────────
-VOLUME ["/home/ftpuser/ftp/uploads", \
-        "/etc/vsftpd/certs", \
-        "/etc/letsencrypt", \
-        "/var/lib/sftp-forward", \
-        "/var/log/sftp-forward"]
-
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

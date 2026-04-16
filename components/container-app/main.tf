@@ -25,6 +25,7 @@ module "container_app" {
   component = "file-transfer-hub"
   env       = var.env
   project   = "hub"
+  name      = "hub-fth"
 
   common_tags = module.ctags.common_tags
 

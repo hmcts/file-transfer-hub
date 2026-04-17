@@ -3,12 +3,6 @@ data "azurerm_key_vault" "this" {
   resource_group_name = "${local.name}-rg"
 }
 
-data "azurerm_container_registry" "ftps" {
-  provider            = azurerm.acr
-  name                = var.acr.name
-  resource_group_name = var.acr.resource_group_name
-}
-
 data "azurerm_key_vault_secret" "ftps" {
   for_each = toset([
     var.ftps.local_user_secret_name,
@@ -32,12 +26,13 @@ resource "azurerm_user_assigned_identity" "ftps_acr_pull" {
 
 resource "azurerm_role_assignment" "ftps_acr_pull" {
   provider             = azurerm.acr
-  scope                = data.azurerm_container_registry.ftps.id
+  scope                = local.acr_registry_id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_user_assigned_identity.ftps_acr_pull.principal_id
 }
 
 locals {
+  acr_registry_id        = "/subscriptions/${var.acr.subscription_id}/resourceGroups/${var.acr.resource_group_name}/providers/Microsoft.ContainerRegistry/registries/${var.acr.name}"
   ftps_storage_sftp_host = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
   ftps_passive_ports = [for port in range(var.ftps.passive_port_min, var.ftps.passive_port_max + 1) : {
     exposedPort = port

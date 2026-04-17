@@ -3,6 +3,26 @@ data "azurerm_key_vault" "this" {
   resource_group_name = "${local.name}-rg"
 }
 
+data "azurerm_container_registry" "ftps" {
+  provider            = azurerm.acr
+  name                = var.acr.name
+  resource_group_name = var.acr.resource_group_name
+}
+
+resource "azurerm_user_assigned_identity" "ftps_acr_pull" {
+  name                = "${local.name_short}-acr-pull"
+  location            = var.location
+  resource_group_name = "${local.name}-rg"
+  tags                = module.ctags.common_tags
+}
+
+resource "azurerm_role_assignment" "ftps_acr_pull" {
+  provider             = azurerm.acr
+  scope                = data.azurerm_container_registry.ftps.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.ftps_acr_pull.principal_id
+}
+
 locals {
   ftps_storage_sftp_host = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
   ftps_passive_ports = [for port in range(var.ftps.passive_port_min, var.ftps.passive_port_max + 1) : {
@@ -162,6 +182,8 @@ module "container_app" {
       ingress_external_enabled = true
       ingress_target_port      = var.ftps.listen_port
       ingress_transport        = "tcp"
+      registry_server          = var.acr.login_server
+      registry_identity_id     = azurerm_user_assigned_identity.ftps_acr_pull.id
 
     }
   }

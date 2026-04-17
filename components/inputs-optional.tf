@@ -26,6 +26,17 @@ variable "container_app" {
   default = {}
 }
 
+variable "acr" {
+  description = "Azure Container Registry configuration used by the FTPS app for image pulls."
+  type = object({
+    name                = optional(string, "hmctsprod")
+    resource_group_name = optional(string, "rpe-acr-prod-rg")
+    subscription_id     = optional(string, "8999dec3-0104-4a27-94ee-6588559729d1")
+    login_server        = optional(string, "hmctsprod.azurecr.io")
+  })
+  default = {}
+}
+
 variable "ftps" {
   type = object({
     certificate_common_name           = optional(string, "ftps.local")

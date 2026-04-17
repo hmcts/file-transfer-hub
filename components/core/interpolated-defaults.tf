@@ -24,6 +24,7 @@ locals {
         "List",
         "Set",
         "Delete",
+        "Recover",
         "Purge"
       ]
     }
@@ -43,6 +44,7 @@ locals {
         "List",
         "Set",
         "Delete",
+        "Recover",
         "Purge"
       ]
     }

@@ -9,6 +9,20 @@ data "azurerm_container_registry" "ftps" {
   resource_group_name = var.acr.resource_group_name
 }
 
+data "azurerm_key_vault_secret" "ftps" {
+  for_each = toset([
+    var.ftps.local_user_secret_name,
+    var.ftps.local_password_secret_name,
+    var.ftps.storage_sftp_user_secret_name,
+    var.ftps.storage_sftp_password_secret_name,
+    var.ftps.certificate_secret_name,
+    var.ftps.certificate_key_secret_name,
+  ])
+
+  name         = each.value
+  key_vault_id = data.azurerm_key_vault.this.id
+}
+
 resource "azurerm_user_assigned_identity" "ftps_acr_pull" {
   name                = "${local.name_short}-acr-pull"
   location            = var.location
@@ -196,6 +210,22 @@ resource "azapi_update_resource" "ftps_passive_ports" {
   body = {
     properties = {
       configuration = {
+        activeRevisionsMode = "Single"
+
+        registries = [
+          {
+            identity = azurerm_user_assigned_identity.ftps_acr_pull.id
+            server   = var.acr.login_server
+          }
+        ]
+
+        secrets = [
+          for name, secret in data.azurerm_key_vault_secret.ftps : {
+            name  = name
+            value = secret.value
+          }
+        ]
+
         ingress = {
           external               = true
           exposedPort            = var.ftps.listen_port

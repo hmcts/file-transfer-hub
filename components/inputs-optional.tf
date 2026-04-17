@@ -49,7 +49,7 @@ variable "ftps" {
     local_password_secret_name        = optional(string, "ftps-local-password")
     local_upload_user                 = optional(string, "ftpssvc")
     local_user_secret_name            = optional(string, "ftps-local-username")
-    passive_port_max                  = optional(number, 1034)
+    passive_port_max                  = optional(number, 1028)
     passive_port_min                  = optional(number, 1024)
     public_endpoint                   = optional(string, "localhost")
     storage_container_name            = optional(string, "ftps-forward")

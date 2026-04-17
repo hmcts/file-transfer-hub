@@ -5,7 +5,7 @@ This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to an
 ## Runtime
 
 - Control port: `990`
-- Passive FTPS ports: `1024-1034`
+- Passive FTPS ports: `1024-1028` by default for Azure Container Apps deployments
 - FTPS user credentials: provided at runtime
 - TLS certificate: provided at runtime as PEM secrets or as a mounted combined PEM file
 - Forwarding target: SFTP username/password over `lftp mirror --reverse`
@@ -60,6 +60,6 @@ The compose file mounts `./certs/ftps.pem` into the container and exposes the fu
 ## Azure Notes
 
 - Container Apps must expose TCP ingress on `990`.
-- Passive FTPS requires explicit TCP mappings for every port in `1024-1034`.
+- Azure Container Apps in this target environment allow at most `5` additional TCP port mappings per app, so the default passive FTPS range is `1024-1028`.
 - `FTPS_PUBLIC_IP` must be set to the address that FTPS clients can actually reach.
 - Nonprod forwarding is designed to target the project storage account over Azure Storage SFTP until the real downstream SFTP endpoint exists.

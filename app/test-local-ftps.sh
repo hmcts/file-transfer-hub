@@ -6,6 +6,7 @@ COMPOSE_PROJECT_NAME="ftps-local-smoke"
 COMPOSE_ARGS=(-p "${COMPOSE_PROJECT_NAME}" -f "${SCRIPT_DIR}/docker-compose.yaml")
 TEST_FILENAME="ftps-smoke-$(date +%s).txt"
 TEST_PAYLOAD="local ftps smoke $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+PRESERVE_STACK="${FTPS_TEST_PRESERVE_STACK:-false}"
 TEMP_DIR="$(mktemp -d "${SCRIPT_DIR}/.ftps-local-smoke.XXXXXX")"
 UPLOAD_FILE="${TEMP_DIR}/${TEST_FILENAME}"
 CERTS_DIR="${TEMP_DIR}/certs"
@@ -15,6 +16,13 @@ compose_down() {
 }
 
 cleanup() {
+    if [[ "${PRESERVE_STACK}" == "true" ]]; then
+        echo "Preserving local smoke stack for inspection" >&2
+        echo "Compose project: ${COMPOSE_PROJECT_NAME}" >&2
+        echo "Temporary directory: ${TEMP_DIR}" >&2
+        return 0
+    fi
+
     compose_down
     rm -rf "${TEMP_DIR}"
 }

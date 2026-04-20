@@ -28,6 +28,20 @@
 - Prod does not auto-create the FTPS runtime secrets. If you change secret names, secret requirements, or certificate inputs, keep the root README and deployment expectations accurate and do not assume Terraform will backfill prod secrets.
 - Be careful when reasoning about Key Vault access policy drift in `components/core`: plans can differ between a local user and the Azure DevOps principal because the policy includes `data.azurerm_client_config.current.object_id`.
 
+# Terraform Plan Validation
+
+- Any change to Terraform files must be validated with `terraform plan` before the task is complete.
+
+For init use:
+```
+-backend-config=storage_account_name=cfb084706949aac66ba5csa -backend-config=container_name=subscription-tfstate -backend-config='key=UK South/hub/file-transfer-hub/nonprod/core/terraform.tfstate' -backend-config=resource_group_name=azure-control-stg-rg -backend-config=subscription_id=04d27a32-7a07-48b3-95b8-3c8691e1a263
+```
+
+For validating plan use (change env or component if needed):
+```
+-var env=nonprod -var builtFrom=hmcts/file-transfer-hub -var product=hub -var-file /azp/_work/1/s/file-transfer-hub/environments/nonprod/nonprod.tfvars -lock=false -detailed-exitcode
+```
+
 ## Pipeline And Image Promotion
 
 - The Azure pipeline builds and publishes the FTPS image from `app/` with `az acr build` to `hmctsprod.azurecr.io/file-transfer-hub/ftps-server`.

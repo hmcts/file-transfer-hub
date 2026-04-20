@@ -3,6 +3,15 @@ data "azurerm_key_vault" "this" {
   resource_group_name = "${local.name}-rg"
 }
 
+data "azurerm_key_vault_secret" "ftps" {
+  for_each = {
+    for secret in local.ftps_key_vault_secrets : secret.name => secret
+  }
+
+  key_vault_id = each.value.key_vault_id
+  name         = each.value.key_vault_secret_name
+}
+
 resource "azurerm_user_assigned_identity" "ftps_acr_pull" {
   name                = "${local.name_short}-acr-pull"
   location            = var.location
@@ -57,6 +66,12 @@ locals {
       }
     ]
   )
+  ftps_container_app_secrets = [
+    for secret in local.ftps_key_vault_secrets : {
+      name  = secret.name
+      value = data.azurerm_key_vault_secret.ftps[secret.name].value
+    }
+  ]
   ftps_passive_ports = [for port in range(var.ftps.passive_port_min, var.ftps.passive_port_max + 1) : {
     exposedPort = port
     external    = true
@@ -102,7 +117,7 @@ module "container_app" {
   container_apps = {
     ftps-server = {
       workload_profile_name = "dedicated"
-      key_vault_secrets = local.ftps_key_vault_secrets
+      key_vault_secrets     = local.ftps_key_vault_secrets
       containers = {
         ftps-server = {
           image  = var.container_app.image
@@ -210,9 +225,11 @@ resource "azapi_update_resource" "ftps_passive_ports" {
           external               = true
           exposedPort            = var.ftps.listen_port
           targetPort             = var.ftps.listen_port
-          transport              = "tcp"
+          transport              = "Tcp"
           additionalPortMappings = local.ftps_passive_ports
         }
+
+        secrets = local.ftps_container_app_secrets
       }
     }
   }

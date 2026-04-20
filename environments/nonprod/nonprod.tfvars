@@ -15,5 +15,5 @@ container_app = {
 }
 
 ftps = {
-  public_endpoint = "ftps-nonprod.example.invalid"
+  public_endpoint = "dtsft.demo.apps.hmcts.net"
 }

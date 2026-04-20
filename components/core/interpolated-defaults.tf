@@ -1,5 +1,6 @@
 locals {
-  private_dns_sub_id  = "1baf5470-1c3e-40d3-a6f7-74bfbce4b348"
+  dns_sub_id          = "ed302caf-ec27-4c64-a05e-85731c3ce90e"
+  private_dns_sub_id  = var.env == "sbox" ? "1497c3d7-ab6d-4bb7-8a10-b51d03189ee3" : "1baf5470-1c3e-40d3-a6f7-74bfbce4b348"
   hub_subscription_id = data.azurerm_subscription.current.subscription_id
   name                = "file-transfer-hub-${var.env}"
   name_short          = "file-tran-hub-${var.env}"
@@ -8,6 +9,25 @@ locals {
     "/subscriptions/1baf5470-1c3e-40d3-a6f7-74bfbce4b348/resourceGroups/cft-ptl-network-rg/providers/Microsoft.Network/virtualNetworks/cft-ptl-vnet/subnets/aks-01",
   ]
   key_vault_access_policies = {
+    "${data.azurerm_client_config.current.object_id}" = {
+      certificate_permissions = []
+      key_permissions = [
+        "Get",
+        "List",
+        "Update",
+        "Create",
+        "Delete"
+      ]
+      storage_permissions = []
+      secret_permissions = [
+        "Get",
+        "List",
+        "Set",
+        "Delete",
+        "Recover",
+        "Purge"
+      ]
+    }
     // Allow DTS Platform Operations
     "e7ea2042-4ced-45dd-8ae3-e051c6551789" = {
       certificate_permissions = []
@@ -24,6 +44,7 @@ locals {
         "List",
         "Set",
         "Delete",
+        "Recover",
         "Purge"
       ]
     }

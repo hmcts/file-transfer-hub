@@ -9,3 +9,11 @@ hub = {
   vnet_name           = "hmcts-hub-nonprodi"
   resource_group_name = "hmcts-hub-nonprodi"
 }
+
+container_app = {
+  image = "hmctsprod.azurecr.io/file-transfer-hub/ftps-server:feat-container-apps"
+}
+
+ftps = {
+  public_endpoint = "ftps-nonprod.example.invalid"
+}

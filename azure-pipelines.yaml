@@ -30,12 +30,26 @@ parameters:
         environment: "nonprod"
         component: "core"
         service_connection: "HMCTS-HUB-NONPROD-INTSVC"
-        dependsOn: "Precheck"
-      - deployment: "prod_core"
-        environment: "prod"
-        component: "core"
-        service_connection: "HMCTS-HUB-PROD-INTSVC"
-        dependsOn: "nonprod_core"
+        dependsOn: "TerraformPrecheck"
+      - deployment: "nonprod_container_app"
+        environment: "nonprod"
+        component: "container-app"
+        service_connection: "HMCTS-HUB-NONPROD-INTSVC"
+        dependsOn:
+          - "nonprod_core"
+          - "AppBuildPublish"
+      # - deployment: "prod_core"
+      #   environment: "prod"
+      #   component: "core"
+      #   service_connection: "HMCTS-HUB-PROD-INTSVC"
+      #   dependsOn: "nonprod_core"
+      # - deployment: "prod_container_app"
+      #   environment: "prod"
+      #   component: "container-app"
+      #   service_connection: "HMCTS-HUB-PROD-INTSVC"
+      #   dependsOn: 
+      #     - "prod_core"
+      #     - "nonprod_container_app"
 
 
 variables:
@@ -48,9 +62,12 @@ variables:
   - name: terraformInitSubscription
     value: 04d27a32-7a07-48b3-95b8-3c8691e1a263
   - template: vars/input-variables.yaml@cnp-azuredevops-libraries
+  - name: imageRepository
+    value: file-transfer-hub/ftps-server
 
 stages:
-  - stage: Precheck
+  - stage: TerraformPrecheck
+    dependsOn: []
     jobs:
       - job:
         pool:
@@ -63,9 +80,56 @@ stages:
               serviceConnection: "azurerm-sandbox"
               overrideAction: ${{ parameters.overrideAction }}
 
+  - stage: AppBuildPublish
+    displayName: "App Build & Publish"
+    dependsOn: []
+    jobs:
+      - job: BuildAndPublish
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - task: AzureCLI@2
+            displayName: "Build and push Docker image to ACR (az acr build)"
+            inputs:
+              azureSubscription: DCD-CNP-Prod
+              scriptType: bash
+              scriptLocation: inlineScript
+              workingDirectory: $(System.DefaultWorkingDirectory)/app
+              inlineScript: |
+                echo "Starting ACR build for $(imageRepository)"
+
+                # Determine the correct branch name
+                if [ "$(Build.Reason)" = "PullRequest" ]; then
+                  BRANCH_NAME="$(System.PullRequest.SourceBranch)"
+                else
+                  BRANCH_NAME="$(Build.SourceBranch)"
+                fi
+
+                # Remove refs/heads/ prefix if present
+                BRANCH_NAME="${BRANCH_NAME#refs/heads/}"
+
+                # Replace / with - for valid Docker tag names
+                BRANCH_NAME="${BRANCH_NAME//\//-}"
+
+                echo "Using branch name: $BRANCH_NAME"
+
+                az acr build --registry hmctsprod \
+                  -t $(imageRepository):$(Build.BuildId) \
+                  -t $(imageRepository):$BRANCH_NAME \
+                  -t $(imageRepository):$BRANCH_NAME-$(Build.BuildId) \
+                  .
+
   - ${{ each deployment in parameters.environment_components }}:
       - stage: ${{ deployment.deployment }}
         dependsOn: ${{ deployment.dependsOn }}
+        ${{ if eq(deployment.component, 'container-app') }}:
+          variables:
+            - name: log_analytics_workspace_id
+              value: $[stageDependencies.${{ deployment.environment
+                }}_core.TerraformPlanApply.outputs['terraformOutputs.log_analytics_workspace_id']]
+            - name: container_apps_subnet_id
+              value: $[stageDependencies.${{ deployment.environment
+                }}_core.TerraformPlanApply.outputs['terraformOutputs.container_apps_subnet_id']]
         jobs:
           - job: TerraformPlanApply
             pool: hmcts-cftptl-agent-pool
@@ -81,3 +145,31 @@ stages:
                   terraformInitSubscription: ${{ variables.terraformInitSubscription }}
                   ${{ if eq(deployment.environment, 'nonprod') }}:
                     backendResourceGroupName: azure-control-stg-rg
+                  ${{ if eq(deployment.component, 'container-app') }}:
+                    planCommandOptions: >-
+                      -var
+                      "log_analytics_workspace_id=$(log_analytics_workspace_id)"
+                      -var
+                      "container_apps_subnet_id=$(container_apps_subnet_id)"
+              - ${{ if eq(deployment.component, 'core') }}:
+                  - task: AzureCLI@2
+                    name: terraformOutputs
+                    displayName: "Capture Terraform Outputs"
+                    inputs:
+                      azureSubscription: ${{ deployment.service_connection }}
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      addSpnToEnvironment: true
+                      inlineScript: |
+                        cd $(System.DefaultWorkingDirectory)/file-transfer-hub/components/core
+
+                        export ARM_CLIENT_ID=$servicePrincipalId
+                        export ARM_CLIENT_SECRET=$servicePrincipalKey
+                        export ARM_TENANT_ID=$tenantId
+                        export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                        LOG_ANALYTICS_ID=$(terraform output -raw log_analytics_workspace_id)
+                        SUBNET_ID=$(terraform output -raw container_apps_subnet_id)
+
+                        echo "##vso[task.setvariable variable=log_analytics_workspace_id;isOutput=true]$LOG_ANALYTICS_ID"
+                        echo "##vso[task.setvariable variable=container_apps_subnet_id;isOutput=true]$SUBNET_ID"

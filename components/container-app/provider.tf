@@ -5,13 +5,9 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "4.59.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "3.7.2"
-    }
-    tls = {
-      source  = "hashicorp/tls"
-      version = "4.1.0"
+    azapi = {
+      source  = "Azure/azapi"
+      version = "2.4.0"
     }
   }
   backend "azurerm" {}
@@ -22,9 +18,9 @@ provider "azurerm" {
 }
 
 provider "azurerm" {
+  alias = "dns"
   features {}
-  alias           = "hub"
-  subscription_id = local.hub_subscription_id
+  subscription_id = local.dns_sub_id
 }
 
 provider "azurerm" {
@@ -32,3 +28,11 @@ provider "azurerm" {
   features {}
   subscription_id = local.private_dns_sub_id
 }
+
+provider "azurerm" {
+  alias = "acr"
+  features {}
+  subscription_id = var.acr.subscription_id
+}
+
+provider "azapi" {}

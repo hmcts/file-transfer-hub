@@ -6,6 +6,9 @@ module "storage" {
   location                   = azurerm_resource_group.this.location
   account_kind               = var.storage_account_kind
   account_replication_type   = var.storage_replication_type
+  enable_hns                 = local.enable_storage_sftp_test_target
+  enable_sftp                = local.enable_storage_sftp_test_target
+  containers                 = local.enable_storage_sftp_test_target ? [{ name = var.ftps.storage_container_name, access_type = "private" }] : []
   common_tags                = module.ctags.common_tags
   private_endpoint_subnet_id = "/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/${module.networking.resource_group_name}/providers/Microsoft.Network/virtualNetworks/${module.networking.vnet_names[local.vnet_key]}/subnets/${module.networking.subnet_names["${local.vnet_key}-general"]}"
   sa_subnets                 = local.cft_ptl_subnet_ids

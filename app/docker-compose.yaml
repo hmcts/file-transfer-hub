@@ -1,50 +1,37 @@
-# ═══════════════════════════════════════════════════════════════════
-#  FTPS Server + SFTP Forwarder
-#  Receives files via implicit FTPS (990) and forwards to a
-#  configurable SFTP endpoint automatically.
-# ═══════════════════════════════════════════════════════════════════
 services:
   ftps:
     build: .
-    container_name: ftps-server
     restart: unless-stopped
 
+    depends_on:
+      - sftp-target
+
     environment:
-      # ── FTPS server config ────────────────────────────────────
-      PASV_ADDRESS: "ftps.example.co.uk"
-      FTP_USER_PASS: "${FTP_USER_PASS:?Set FTP_USER_PASS in .env or environment}"
-      LE_DOMAIN: "ftps.example.co.uk"
-      LE_EMAIL: "admin@example.co.uk"
-
-      # ── Development mode ──────────────────────────────────────
-      # Set to "true" to disable TLS entirely (plain FTP).
-      # DO NOT enable in production.
-      DEV_MODE: "${DEV_MODE:-false}"
-
-      # ── SFTP forwarding config ────────────────────────────────
-      SFTP_FWD_HOST: "${SFTP_FWD_HOST:-}"
-      SFTP_FWD_PORT: "${SFTP_FWD_PORT:-22}"
-      SFTP_FWD_USER: "${SFTP_FWD_USER:-}"
-      SFTP_FWD_KEY: "/var/lib/sftp-forward/ssh/id_ed25519"
-      SFTP_FWD_REMOTE_DIR: "${SFTP_FWD_REMOTE_DIR:-/incoming}"
-      SFTP_FWD_KNOWN_HOSTS: "/var/lib/sftp-forward/ssh/known_hosts"
-      SFTP_FWD_RETRIES: "${SFTP_FWD_RETRIES:-3}"
-      SFTP_FWD_RETRY_DELAY: "${SFTP_FWD_RETRY_DELAY:-10}"
-      SFTP_FWD_DELETE_AFTER: "${SFTP_FWD_DELETE_AFTER:-false}"
+      FTPS_PUBLIC_IP: "${FTPS_PUBLIC_IP:-127.0.0.1}"
+      FTPS_LOCAL_USER: "${FTPS_LOCAL_USER:-ftpssvc}"
+      FTPS_LOCAL_PASSWORD: "${FTPS_LOCAL_PASSWORD:-}"
+      FTPS_CERTIFICATE_PATH: "${FTPS_CERTIFICATE_PATH:-/certs/ftps.pem}"
+      FTPS_PASSIVE_MIN_PORT: "${FTPS_PASSIVE_MIN_PORT:-1024}"
+      FTPS_PASSIVE_MAX_PORT: "${FTPS_PASSIVE_MAX_PORT:-1034}"
+      FTPS_ENABLE_STORAGE_FORWARD: "${FTPS_ENABLE_STORAGE_FORWARD:-true}"
+      FTPS_FORWARD_INTERVAL_SECONDS: "${FTPS_FORWARD_INTERVAL_SECONDS:-2}"
+      FTPS_FORWARD_DELETE_AFTER: "${FTPS_FORWARD_DELETE_AFTER:-false}"
+      FTPS_STORAGE_SFTP_HOST: "${FTPS_STORAGE_SFTP_HOST:-sftp-target}"
+      FTPS_STORAGE_SFTP_PORT: "${FTPS_STORAGE_SFTP_PORT:-22}"
+      FTPS_STORAGE_SFTP_USERNAME: "${FTPS_STORAGE_SFTP_USERNAME:-sftpuser}"
+      FTPS_STORAGE_SFTP_PASSWORD: "${FTPS_STORAGE_SFTP_PASSWORD:-sftppass}"
+      FTPS_STORAGE_SFTP_REMOTE_DIR: "${FTPS_STORAGE_SFTP_REMOTE_DIR:-dropoff}"
 
     ports:
       - "990:990"
-      - "10242-11034:10242-11034"
-      - "80:80"
+      - "1024-1034:1024-1034"
 
     volumes:
-      - ftps-uploads:/home/ftpuser/ftp/uploads
-      - ftps-certs:/etc/vsftpd/certs
-      - ftps-letsencrypt:/etc/letsencrypt
-      - ./sftp-forward:/var/lib/sftp-forward/ssh:ro
-      - sftp-forward-state:/var/lib/sftp-forward
-      - ftps-logs:/var/log/vsftpd
-      - sftp-forward-logs:/var/log/sftp-forward
+      - type: tmpfs
+        target: /srv/ftps
+      - ${FTPS_CERTS_DIR:-./certs}:/certs:ro
+      - type: tmpfs
+        target: /var/log/proftpd
 
     cap_drop:
       - ALL
@@ -60,22 +47,13 @@ services:
     healthcheck:
       test: >
         sh -c '
-          if [ "$DEV_MODE" = "true" ]; then
-            echo QUIT | nc 127.0.0.1 990 2>/dev/null | grep -qi ftp
-          else
-            echo | openssl s_client -connect 127.0.0.1:990 -tls1_2 2>/dev/null | grep -q CONNECTED
-          fi &&
-          (pgrep -f sftp-forwarder > /dev/null 2>&1 || [ -z "$SFTP_FWD_HOST" ])
+          echo | openssl s_client -connect 127.0.0.1:990 -tls1_2 2>/dev/null | grep -q CONNECTED
         '
       interval: 60s
       timeout: 10s
       retries: 3
       start_period: 30s
 
-volumes:
-  ftps-uploads:
-  ftps-certs:
-  ftps-letsencrypt:
-  sftp-forward-state:
-  ftps-logs:
-  sftp-forward-logs:
+  sftp-target:
+    image: atmoz/sftp:alpine
+    command: sftpuser:sftppass:1001::dropoff

@@ -42,6 +42,9 @@ Temporary Items
 *.tfstate
 *.tfstate.*
 
+# Terraform lock files
+.terraform.lock.hcl
+
 # Crash log files
 crash.log
 crash.*.log
@@ -83,3 +86,26 @@ terraform.rc
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/terraform,macos,visualstudiocode
+
+# ── Secrets and credentials (NEVER commit these) ────────────────
+.env
+*.pem
+*.key
+*.crt
+
+# ── SFTP forwarding private keys ────────────────────────────────
+app/id_ed25519
+app/id_rsa
+
+# ── Runtime data ─────────────────────────────────────────────────
+certs/
+app/certs/
+
+# ── Editor and OS ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

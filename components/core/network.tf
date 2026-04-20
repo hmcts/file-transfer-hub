@@ -17,13 +17,12 @@ module "networking" {
         }
         compute = {
           address_prefixes = var.address_space.compute_subnet
-          // If we use container apps, then we need to add a delegation to allow the subnet to be used by container apps.
-          //delegations = {
-          //  containerapps = {
-          //    service_name = "Microsoft.App/environments"
-          //    actions      = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
-          //  }
-          //}
+          delegations = {
+            containerapps = {
+              service_name = "Microsoft.App/environments"
+              actions      = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+            }
+          }
         }
       }
     }

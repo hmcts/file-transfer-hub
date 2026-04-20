@@ -1,33 +1,37 @@
 services:
   ftps:
     build: .
-    container_name: ftps-server
     restart: unless-stopped
+
+    depends_on:
+      - sftp-target
 
     environment:
       FTPS_PUBLIC_IP: "${FTPS_PUBLIC_IP:-127.0.0.1}"
       FTPS_LOCAL_USER: "${FTPS_LOCAL_USER:-ftpssvc}"
-      FTPS_LOCAL_PASSWORD: "${FTPS_LOCAL_PASSWORD:?Set FTPS_LOCAL_PASSWORD in .env or environment}"
-      FTPS_CERTIFICATE_PATH: "/certs/ftps.pem"
+      FTPS_LOCAL_PASSWORD: "${FTPS_LOCAL_PASSWORD:-}"
+      FTPS_CERTIFICATE_PATH: "${FTPS_CERTIFICATE_PATH:-/certs/ftps.pem}"
       FTPS_PASSIVE_MIN_PORT: "${FTPS_PASSIVE_MIN_PORT:-1024}"
       FTPS_PASSIVE_MAX_PORT: "${FTPS_PASSIVE_MAX_PORT:-1034}"
       FTPS_ENABLE_STORAGE_FORWARD: "${FTPS_ENABLE_STORAGE_FORWARD:-true}"
-      FTPS_FORWARD_INTERVAL_SECONDS: "${FTPS_FORWARD_INTERVAL_SECONDS:-60}"
+      FTPS_FORWARD_INTERVAL_SECONDS: "${FTPS_FORWARD_INTERVAL_SECONDS:-2}"
       FTPS_FORWARD_DELETE_AFTER: "${FTPS_FORWARD_DELETE_AFTER:-false}"
-      FTPS_STORAGE_SFTP_HOST: "${FTPS_STORAGE_SFTP_HOST:-}"
+      FTPS_STORAGE_SFTP_HOST: "${FTPS_STORAGE_SFTP_HOST:-sftp-target}"
       FTPS_STORAGE_SFTP_PORT: "${FTPS_STORAGE_SFTP_PORT:-22}"
-      FTPS_STORAGE_SFTP_USERNAME: "${FTPS_STORAGE_SFTP_USERNAME:-}"
-      FTPS_STORAGE_SFTP_PASSWORD: "${FTPS_STORAGE_SFTP_PASSWORD:-}"
-      FTPS_STORAGE_SFTP_REMOTE_DIR: "${FTPS_STORAGE_SFTP_REMOTE_DIR:-.}"
+      FTPS_STORAGE_SFTP_USERNAME: "${FTPS_STORAGE_SFTP_USERNAME:-sftpuser}"
+      FTPS_STORAGE_SFTP_PASSWORD: "${FTPS_STORAGE_SFTP_PASSWORD:-sftppass}"
+      FTPS_STORAGE_SFTP_REMOTE_DIR: "${FTPS_STORAGE_SFTP_REMOTE_DIR:-dropoff}"
 
     ports:
       - "990:990"
       - "1024-1034:1024-1034"
 
     volumes:
-      - ftps-uploads:/srv/ftps
-      - ./certs:/certs:ro
-      - ftps-logs:/var/log/proftpd
+      - type: tmpfs
+        target: /srv/ftps
+      - ${FTPS_CERTS_DIR:-./certs}:/certs:ro
+      - type: tmpfs
+        target: /var/log/proftpd
 
     cap_drop:
       - ALL
@@ -50,6 +54,6 @@ services:
       retries: 3
       start_period: 30s
 
-volumes:
-  ftps-uploads:
-  ftps-logs:
+  sftp-target:
+    image: atmoz/sftp:alpine
+    command: sftpuser:sftppass:1001::dropoff

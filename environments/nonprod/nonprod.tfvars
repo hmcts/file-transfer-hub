@@ -13,3 +13,7 @@ hub = {
 container_app = {
   image = "hmctsprod.azurecr.io/file-transfer-hub/ftps-server:feat-container-apps"
 }
+
+ftps = {
+  public_endpoint = "ftps-nonprod.example.invalid"
+}

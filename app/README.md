@@ -16,6 +16,7 @@ The container image is built from:
 - `entrypoint.sh`
 - `proftpd-ftps.conf.template`
 - `ftps-storage-forward.sh`
+- `Makefile`
 
 ## Local Build
 
@@ -25,18 +26,69 @@ Build the container image locally:
 docker build -t file-transfer-hub-ftps:local .
 ```
 
-## Local Run
+## Local Smoke Test
 
-Create a combined PEM file for local testing:
+Run the disposable local smoke test from the `app` directory:
 
 ```bash
-mkdir -p certs
-cat server.key server.crt > certs/ftps.pem
-cp .env.example .env
-docker compose up --build
+make test
 ```
 
-The compose file mounts `./certs/ftps.pem` into the container and exposes the full FTPS passive range.
+You can override the FTPS password if you want to exercise a specific value:
+
+```bash
+FTPS_LOCAL_PASSWORD='localpass123!' ./test-local-ftps.sh
+```
+
+What the test does:
+
+- builds the FTPS image locally
+- generates a throwaway self-signed certificate in a repo-local temporary directory for that run
+- starts the FTPS service and local SFTP sidecar from `docker-compose.yaml`
+- uploads a file over implicit FTPS on port `990`
+- waits for the background forwarder to copy that file to the SFTP target
+- verifies the forwarded file contents match the uploaded payload
+
+The script cleans up the test containers, volumes, temporary certificates, and uploaded test payload automatically on exit.
+
+## Local Run
+
+The default local compose stack is disposable and includes both the FTPS container and a local SFTP sidecar. Uploaded files and ProFTPD logs live on `tmpfs`, so they disappear when the stack stops.
+
+Generate local certs once and start the stack:
+
+```bash
+make up
+```
+
+That target depends on `make certs`, which creates `certs/server.key`, `certs/server.crt`, and `certs/ftps.pem` only if they are not already present.
+
+If `app/.env` does not exist, `make up` also copies `app/.env.local.example` to `app/.env`. The tracked local template currently contains:
+
+```bash
+FTPS_LOCAL_PASSWORD=localpass123!
+```
+
+That gives the manual local stack a known FTPS login without requiring any extra setup. You can edit `app/.env` afterward if you want a different password for manual runs.
+
+Useful local targets:
+
+- `make certs`: generate an idempotent self-signed cert set for local manual runs
+- `make ensure-env`: create `app/.env` from `app/.env.local.example` when it is missing
+- `make up`: generate certs if needed and start the local FTPS-plus-SFTP stack
+- `make down`: stop and remove the local FTPS-plus-SFTP stack
+- `make test`: run the automated FTPS-to-SFTP smoke test with temporary certs and automatic cleanup
+
+The compose file mounts `./certs/ftps.pem` into the container and exposes the full FTPS passive range. The smoke test does not reuse this directory; it creates a temporary cert directory under `app/`, mounts that for the test run, and removes it on exit so manual cert files are left alone.
+
+Use `make up` when you want to inspect the local FTPS-to-SFTP forwarding stack interactively. Use `make test` when you want a repeatable pass/fail check after image changes.
+
+For manual local runs, the default login is:
+
+- username: `ftpssvc`
+- password: `localpass123!` unless you changed `app/.env`
+
+The automated smoke test does not read the manual password from `app/.env`; it forces its own fixed test password internally so it stays deterministic.
 
 ## Environment Variables
 

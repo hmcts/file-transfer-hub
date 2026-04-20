@@ -4,23 +4,23 @@ UseIPv6                         off
 Port                            ${FTPS_LISTEN_PORT}
 Umask                           022 022
 MaxInstances                    30
-DefaultRoot                     ~
 RequireValidShell               off
-AuthOrder                       mod_auth_pam.c* mod_auth_unix.c
+AuthPAM                         off
+AuthOrder                       mod_auth_file.c
+AuthUserFile                    ${FTPS_AUTH_USER_FILE}
+AuthGroupFile                   ${FTPS_AUTH_GROUP_FILE}
 RootLogin                       off
 AllowOverwrite                  on
 UseReverseDNS                   off
+<IfModule mod_wrap2.c>
+  WrapEngine                    off
+</IfModule>
 MasqueradeAddress               ${FTPS_PUBLIC_IP}
 PassivePorts                    ${FTPS_PASSIVE_MIN_PORT} ${FTPS_PASSIVE_MAX_PORT}
 AllowForeignAddress             on
 DisplayLogin                    ${FTPS_BANNER_PATH}
 TransferLog                     /var/log/proftpd/xferlog
 SystemLog                       /var/log/proftpd/proftpd.log
-
-<Limit LOGIN>
-  AllowUser ${FTPS_LOCAL_USER}
-  DenyAll
-</Limit>
 
 <IfModule mod_tls.c>
   TLSEngine                     on

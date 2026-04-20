@@ -8,7 +8,9 @@ export FTPS_LOCAL_UPLOAD_DIR="${FTPS_LOCAL_UPLOAD_DIR:-${FTPS_LOCAL_ROOT}/upload
 export FTPS_LOCAL_DOWNLOAD_DIR="${FTPS_LOCAL_DOWNLOAD_DIR:-${FTPS_LOCAL_ROOT}/download}"
 export FTPS_BANNER_PATH="${FTPS_BANNER_PATH:-${FTPS_LOCAL_ROOT}/.banner}"
 export FTPS_WELCOME_MESSAGE="${FTPS_WELCOME_MESSAGE:-HMCTS FTPS service ready.}"
-export FTPS_CERTIFICATE_PATH="${FTPS_CERTIFICATE_PATH:-/etc/ssl/private/ftps.pem}"
+export FTPS_AUTH_USER_FILE="${FTPS_AUTH_USER_FILE:-/etc/proftpd/auth/ftpd.passwd}"
+export FTPS_AUTH_GROUP_FILE="${FTPS_AUTH_GROUP_FILE:-/etc/proftpd/auth/ftpd.group}"
+export FTPS_CERTIFICATE_PATH="${FTPS_CERTIFICATE_PATH:-/etc/proftpd/tls/ftps.pem}"
 export FTPS_CERTIFICATE_PEM="${FTPS_CERTIFICATE_PEM:-}"
 export FTPS_CERTIFICATE_KEY_PEM="${FTPS_CERTIFICATE_KEY_PEM:-}"
 export FTPS_PUBLIC_IP="${FTPS_PUBLIC_IP:-localhost}"
@@ -30,13 +32,14 @@ if ! id -u "${FTPS_LOCAL_USER}" >/dev/null 2>&1; then
     useradd -g "${FTPS_LOCAL_USER}" -d "${FTPS_LOCAL_ROOT}" -M -s /bin/bash "${FTPS_LOCAL_USER}"
 fi
 
-usermod -p "$(openssl passwd -6 "${FTPS_LOCAL_PASSWORD}")" "${FTPS_LOCAL_USER}"
+FTPS_LOCAL_PASSWORD_HASH="$(openssl passwd -6 "${FTPS_LOCAL_PASSWORD}")"
+usermod -p "${FTPS_LOCAL_PASSWORD_HASH}" "${FTPS_LOCAL_USER}"
 
 mkdir -p /srv/ftps "${FTPS_LOCAL_ROOT}" "${FTPS_LOCAL_UPLOAD_DIR}" "${FTPS_LOCAL_DOWNLOAD_DIR}" /var/log/proftpd
 chown root:root /srv/ftps "${FTPS_LOCAL_ROOT}"
 chmod 0755 /srv/ftps "${FTPS_LOCAL_ROOT}"
-chown "${FTPS_LOCAL_USER}:${FTPS_LOCAL_USER}" "${FTPS_LOCAL_UPLOAD_DIR}"
 chmod 0750 "${FTPS_LOCAL_UPLOAD_DIR}"
+chown "${FTPS_LOCAL_USER}:${FTPS_LOCAL_USER}" "${FTPS_LOCAL_UPLOAD_DIR}"
 chown root:"${FTPS_LOCAL_USER}" "${FTPS_LOCAL_DOWNLOAD_DIR}"
 chmod 0550 "${FTPS_LOCAL_DOWNLOAD_DIR}"
 
@@ -53,12 +56,44 @@ printf '%s\n' "${FTPS_WELCOME_MESSAGE}" > "${FTPS_BANNER_PATH}"
 chown root:root "${FTPS_BANNER_PATH}"
 chmod 0644 "${FTPS_BANNER_PATH}"
 
-mkdir -p "$(dirname "${FTPS_CERTIFICATE_PATH}")"
+FTPS_CERTIFICATE_GROUP="root"
+if id -u proftpd >/dev/null 2>&1; then
+    FTPS_CERTIFICATE_GROUP="$(id -gn proftpd)"
+fi
+
+FTPS_AUTH_DIR="$(dirname "${FTPS_AUTH_USER_FILE}")"
+mkdir -p "${FTPS_AUTH_DIR}"
+if [[ "$(dirname "${FTPS_AUTH_GROUP_FILE}")" != "${FTPS_AUTH_DIR}" ]]; then
+    mkdir -p "$(dirname "${FTPS_AUTH_GROUP_FILE}")"
+fi
+
+FTPS_RUNTIME_GROUP="${FTPS_CERTIFICATE_GROUP}"
+
+cat > "${FTPS_AUTH_USER_FILE}" <<EOF
+${FTPS_LOCAL_USER}:${FTPS_LOCAL_PASSWORD_HASH}:$(id -u "${FTPS_LOCAL_USER}"):$(id -g "${FTPS_LOCAL_USER}")::${FTPS_LOCAL_ROOT}:/bin/bash
+EOF
+
+cat > "${FTPS_AUTH_GROUP_FILE}" <<EOF
+${FTPS_LOCAL_USER}:x:$(id -g "${FTPS_LOCAL_USER}"):${FTPS_LOCAL_USER}
+EOF
+
+chown root:"${FTPS_RUNTIME_GROUP}" "${FTPS_AUTH_DIR}" "${FTPS_AUTH_USER_FILE}" "${FTPS_AUTH_GROUP_FILE}"
+chmod 0750 "${FTPS_AUTH_DIR}"
+chmod 0640 "${FTPS_AUTH_USER_FILE}" "${FTPS_AUTH_GROUP_FILE}"
+
+FTPS_CERTIFICATE_DIR="$(dirname "${FTPS_CERTIFICATE_PATH}")"
+FTPS_CERTIFICATE_MANAGED="false"
+
+if [[ ! -d "${FTPS_CERTIFICATE_DIR}" ]]; then
+    install -d -m 0750 -o root -g "${FTPS_CERTIFICATE_GROUP}" "${FTPS_CERTIFICATE_DIR}"
+fi
+
 if [[ -n "${FTPS_CERTIFICATE_PEM}" && -n "${FTPS_CERTIFICATE_KEY_PEM}" ]]; then
     cat > "${FTPS_CERTIFICATE_PATH}" <<EOF
 ${FTPS_CERTIFICATE_KEY_PEM}
 ${FTPS_CERTIFICATE_PEM}
 EOF
+    FTPS_CERTIFICATE_MANAGED="true"
 fi
 
 if [[ ! -f "${FTPS_CERTIFICATE_PATH}" ]]; then
@@ -66,7 +101,10 @@ if [[ ! -f "${FTPS_CERTIFICATE_PATH}" ]]; then
     exit 1
 fi
 
-chmod 0600 "${FTPS_CERTIFICATE_PATH}"
+if [[ "${FTPS_CERTIFICATE_MANAGED}" == "true" ]]; then
+    chown root:"${FTPS_CERTIFICATE_GROUP}" "${FTPS_CERTIFICATE_PATH}"
+    chmod 0640 "${FTPS_CERTIFICATE_PATH}"
+fi
 
 sed -i 's/^#\?LoadModule mod_tls.c/LoadModule mod_tls.c/' /etc/proftpd/modules.conf
 envsubst < /etc/proftpd/proftpd-ftps.conf.template > /etc/proftpd/conf.d/hmcts-ftps.conf

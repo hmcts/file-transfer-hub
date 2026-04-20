@@ -15,5 +15,8 @@ container_app = {
 }
 
 ftps = {
-  public_endpoint = "ftps-nonprod.example.invalid"
+  public_endpoint             = "dtsft.demo.apps.hmcts.net"
+  certificate_key_vault_id    = "/subscriptions/d025fece-ce99-4df2-b7a9-b649d3ff2060/resourceGroups/cft-platform-demo-rg/providers/Microsoft.KeyVault/vaults/acmedcdcftappsdemo"
+  certificate_secret_name     = "dtsft-demo-apps-hmcts-net"
+  certificate_key_secret_name = "dtsft-demo-apps-hmcts-net"
 }

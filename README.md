@@ -24,6 +24,8 @@ The FTPS runtime expects these Key Vault secrets to exist:
 - Nonprod: Terraform generates these secrets and stores them in Key Vault.
 - Prod: Terraform does not generate these secrets. They must be created in Key Vault before the container-app deployment is planned or applied.
 
+To use a certificate from a different Key Vault (for example, Acmebot), set `ftps.certificate_key_vault_id` and point `ftps.certificate_secret_name` and `ftps.certificate_key_secret_name` to PEM-format secrets in that vault.
+
 ## Current Nonprod Test Approach
 
 Until the real downstream SFTP server is available, nonprod uses the project storage account as a temporary SFTP forwarding target.

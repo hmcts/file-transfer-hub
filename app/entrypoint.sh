@@ -88,16 +88,19 @@ if [[ ! -d "${FTPS_CERTIFICATE_DIR}" ]]; then
     install -d -m 0750 -o root -g "${FTPS_CERTIFICATE_GROUP}" "${FTPS_CERTIFICATE_DIR}"
 fi
 
-if [[ -n "${FTPS_CERTIFICATE_PEM}" && -n "${FTPS_CERTIFICATE_KEY_PEM}" ]]; then
+if [[ -n "${FTPS_CERTIFICATE_PEM}" && -n "${FTPS_CERTIFICATE_KEY_PEM}" && "${FTPS_CERTIFICATE_PEM}" != "${FTPS_CERTIFICATE_KEY_PEM}" ]]; then
     cat > "${FTPS_CERTIFICATE_PATH}" <<EOF
 ${FTPS_CERTIFICATE_KEY_PEM}
 ${FTPS_CERTIFICATE_PEM}
 EOF
     FTPS_CERTIFICATE_MANAGED="true"
+elif [[ -n "${FTPS_CERTIFICATE_PEM}" ]]; then
+    printf '%s\n' "${FTPS_CERTIFICATE_PEM}" > "${FTPS_CERTIFICATE_PATH}"
+    FTPS_CERTIFICATE_MANAGED="true"
 fi
 
 if [[ ! -f "${FTPS_CERTIFICATE_PATH}" ]]; then
-    echo "FTPS certificate not found at ${FTPS_CERTIFICATE_PATH} and FTPS_CERTIFICATE_PEM/FTPS_CERTIFICATE_KEY_PEM were not provided" >&2
+    echo "FTPS certificate not found at ${FTPS_CERTIFICATE_PATH} and FTPS certificate environment variables were not provided" >&2
     exit 1
 fi
 

@@ -11,7 +11,7 @@ hub = {
 }
 
 container_app = {
-  image = "hmctsprod.azurecr.io/file-transfer-hub/ftps-server:feat-container-apps"
+  image = "hmctsprod.azurecr.io/file-transfer-hub/ftps-server:main"
 }
 
 ftps = {

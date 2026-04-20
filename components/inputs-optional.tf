@@ -40,6 +40,7 @@ variable "acr" {
 variable "ftps" {
   type = object({
     certificate_common_name           = optional(string, "ftps.local")
+    certificate_key_vault_id          = optional(string)
     certificate_key_secret_name       = optional(string, "ftps-certificate-key-pem")
     certificate_secret_name           = optional(string, "ftps-certificate-pem")
     forward_delete_after              = optional(bool, false)

@@ -9,27 +9,6 @@ resource "random_password" "ftps_local_password" {
   special = true
 }
 
-resource "tls_private_key" "ftps_certificate" {
-  count     = local.enable_storage_sftp_test_target ? 1 : 0
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
-
-resource "tls_self_signed_cert" "ftps_certificate" {
-  count                 = local.enable_storage_sftp_test_target ? 1 : 0
-  private_key_pem       = tls_private_key.ftps_certificate[0].private_key_pem
-  validity_period_hours = 24 * 365
-  allowed_uses = [
-    "digital_signature",
-    "key_encipherment",
-    "server_auth",
-  ]
-
-  subject {
-    common_name = var.ftps.certificate_common_name
-  }
-}
-
 resource "azurerm_storage_account_local_user" "ftps_forwarder" {
   count                = local.enable_storage_sftp_test_target ? 1 : 0
   name                 = var.ftps.storage_sftp_user
@@ -82,20 +61,4 @@ resource "azurerm_key_vault_secret" "ftps_storage_sftp_password" {
   value        = azurerm_storage_account_local_user.ftps_forwarder[0].password
   key_vault_id = azurerm_key_vault.this.id
   content_type = "text/plain"
-}
-
-resource "azurerm_key_vault_secret" "ftps_certificate" {
-  count        = local.enable_storage_sftp_test_target ? 1 : 0
-  name         = var.ftps.certificate_secret_name
-  value        = tls_self_signed_cert.ftps_certificate[0].cert_pem
-  key_vault_id = azurerm_key_vault.this.id
-  content_type = "application/x-pem-file"
-}
-
-resource "azurerm_key_vault_secret" "ftps_certificate_key" {
-  count        = local.enable_storage_sftp_test_target ? 1 : 0
-  name         = var.ftps.certificate_key_secret_name
-  value        = tls_private_key.ftps_certificate[0].private_key_pem
-  key_vault_id = azurerm_key_vault.this.id
-  content_type = "application/x-pem-file"
 }

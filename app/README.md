@@ -92,6 +92,7 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 
 ## Environment Variables
 
+- `FTPS_LISTEN_PORT`: FTPS control port the server listens on
 - `FTPS_PUBLIC_IP`: Hostname or IP returned to FTPS clients for passive connections
 - `FTPS_LOCAL_USER`: FTPS login username
 - `FTPS_LOCAL_PASSWORD`: FTPS login password

@@ -24,6 +24,7 @@ set net:max-retries 2
 set net:reconnect-interval-base 5
 set net:timeout 20
 set sftp:auto-confirm yes
+set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=accept-new"
 mirror --reverse --continue --only-newer --parallel=1 ${remove_source_flag} "${FTPS_FORWARD_LOCAL_DIR}" "${FTPS_STORAGE_SFTP_REMOTE_DIR:-.}"
 bye
 EOF

@@ -9,6 +9,7 @@ This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to an
 - FTPS user credentials: provided at runtime
 - TLS certificate: provided at runtime as PEM secrets or as a mounted combined PEM file
 - Forwarding target: SFTP username/password over `lftp mirror --reverse`
+- Forwarding host trust: the SFTP client currently uses `StrictHostKeyChecking=accept-new` so the first seen host key is accepted and then pinned for the life of that container filesystem
 
 The container image is built from:
 
@@ -50,6 +51,25 @@ What the test does:
 - verifies the forwarded file contents match the uploaded payload
 
 The script cleans up the test containers, volumes, temporary certificates, and uploaded test payload automatically on exit.
+
+If you need to inspect the smoke environment after the script finishes, preserve it explicitly for that run:
+
+```bash
+FTPS_TEST_PRESERVE_STACK=true ./test-local-ftps.sh
+```
+
+When preserved, the script prints the compose project name and temporary directory instead of tearing them down. You can then inspect the sidecar and FTPS logs, for example:
+
+```bash
+docker compose -p ftps-local-smoke -f docker-compose.yaml exec -T sftp-target ls -la /home/sftpuser/dropoff
+docker compose -p ftps-local-smoke -f docker-compose.yaml logs ftps
+```
+
+Clean up afterward with:
+
+```bash
+docker compose -p ftps-local-smoke -f docker-compose.yaml down -v --remove-orphans
+```
 
 ## Local Run
 
@@ -109,6 +129,13 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 - `FTPS_STORAGE_SFTP_USERNAME`: Destination SFTP username
 - `FTPS_STORAGE_SFTP_PASSWORD`: Destination SFTP password
 - `FTPS_STORAGE_SFTP_REMOTE_DIR`: Destination directory on the SFTP server
+
+Current temporary SFTP trust behavior:
+
+- the forwarding client uses `ssh -o StrictHostKeyChecking=accept-new` underneath `lftp`
+- this allows first-connect host key bootstrap for the configured SFTP target
+- later connections still verify the previously accepted key while the container filesystem persists
+- this is a temporary runtime compromise; explicit host-key pinning is the intended long-term behavior
 
 ## Azure Notes
 

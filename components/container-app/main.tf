@@ -3,28 +3,6 @@ data "azurerm_key_vault" "this" {
   resource_group_name = "${local.name}-rg"
 }
 
-data "azurerm_key_vault_secret" "ftps_runtime" {
-  for_each = toset([
-    var.ftps.local_user_secret_name,
-    var.ftps.local_password_secret_name,
-    var.ftps.storage_sftp_user_secret_name,
-    var.ftps.storage_sftp_password_secret_name,
-  ])
-
-  name         = each.value
-  key_vault_id = data.azurerm_key_vault.this.id
-}
-
-data "azurerm_key_vault_secret" "ftps_certificate" {
-  for_each = toset([
-    var.ftps.certificate_secret_name,
-    var.ftps.certificate_key_secret_name,
-  ])
-
-  name         = each.value
-  key_vault_id = local.ftps_certificate_key_vault_id
-}
-
 resource "azurerm_user_assigned_identity" "ftps_acr_pull" {
   name                = "${local.name_short}-acr-pull"
   location            = var.location
@@ -43,6 +21,42 @@ locals {
   acr_registry_id               = "/subscriptions/${var.acr.subscription_id}/resourceGroups/${var.acr.resource_group_name}/providers/Microsoft.ContainerRegistry/registries/${var.acr.name}"
   ftps_certificate_key_vault_id = coalesce(var.ftps.certificate_key_vault_id, data.azurerm_key_vault.this.id)
   ftps_storage_sftp_host        = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
+  ftps_key_vault_secrets = concat(
+    [
+      {
+        name                  = var.ftps.local_user_secret_name
+        key_vault_id          = data.azurerm_key_vault.this.id
+        key_vault_secret_name = var.ftps.local_user_secret_name
+      },
+      {
+        name                  = var.ftps.local_password_secret_name
+        key_vault_id          = data.azurerm_key_vault.this.id
+        key_vault_secret_name = var.ftps.local_password_secret_name
+      },
+      {
+        name                  = var.ftps.storage_sftp_user_secret_name
+        key_vault_id          = data.azurerm_key_vault.this.id
+        key_vault_secret_name = var.ftps.storage_sftp_user_secret_name
+      },
+      {
+        name                  = var.ftps.storage_sftp_password_secret_name
+        key_vault_id          = data.azurerm_key_vault.this.id
+        key_vault_secret_name = var.ftps.storage_sftp_password_secret_name
+      },
+      {
+        name                  = var.ftps.certificate_secret_name
+        key_vault_id          = local.ftps_certificate_key_vault_id
+        key_vault_secret_name = var.ftps.certificate_secret_name
+      }
+    ],
+    var.ftps.certificate_key_secret_name == var.ftps.certificate_secret_name ? [] : [
+      {
+        name                  = var.ftps.certificate_key_secret_name
+        key_vault_id          = local.ftps_certificate_key_vault_id
+        key_vault_secret_name = var.ftps.certificate_key_secret_name
+      }
+    ]
+  )
   ftps_passive_ports = [for port in range(var.ftps.passive_port_min, var.ftps.passive_port_max + 1) : {
     exposedPort = port
     external    = true
@@ -88,38 +102,7 @@ module "container_app" {
   container_apps = {
     ftps-server = {
       workload_profile_name = "dedicated"
-      key_vault_secrets = [
-        {
-          name                  = var.ftps.local_user_secret_name
-          key_vault_id          = data.azurerm_key_vault.this.id
-          key_vault_secret_name = var.ftps.local_user_secret_name
-        },
-        {
-          name                  = var.ftps.local_password_secret_name
-          key_vault_id          = data.azurerm_key_vault.this.id
-          key_vault_secret_name = var.ftps.local_password_secret_name
-        },
-        {
-          name                  = var.ftps.storage_sftp_user_secret_name
-          key_vault_id          = data.azurerm_key_vault.this.id
-          key_vault_secret_name = var.ftps.storage_sftp_user_secret_name
-        },
-        {
-          name                  = var.ftps.storage_sftp_password_secret_name
-          key_vault_id          = data.azurerm_key_vault.this.id
-          key_vault_secret_name = var.ftps.storage_sftp_password_secret_name
-        },
-        {
-          name                  = var.ftps.certificate_secret_name
-          key_vault_id          = local.ftps_certificate_key_vault_id
-          key_vault_secret_name = var.ftps.certificate_secret_name
-        },
-        {
-          name                  = var.ftps.certificate_key_secret_name
-          key_vault_id          = local.ftps_certificate_key_vault_id
-          key_vault_secret_name = var.ftps.certificate_key_secret_name
-        },
-      ]
+      key_vault_secrets = local.ftps_key_vault_secrets
       containers = {
         ftps-server = {
           image  = var.container_app.image
@@ -222,21 +205,6 @@ resource "azapi_update_resource" "ftps_passive_ports" {
             server   = var.acr.login_server
           }
         ]
-
-        secrets = concat(
-          [
-            for name, secret in data.azurerm_key_vault_secret.ftps_runtime : {
-              name  = name
-              value = secret.value
-            }
-          ],
-          [
-            for name, secret in data.azurerm_key_vault_secret.ftps_certificate : {
-              name  = name
-              value = secret.value
-            }
-          ]
-        )
 
         ingress = {
           external               = true

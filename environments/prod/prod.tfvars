@@ -9,3 +9,8 @@ hub = {
   vnet_name           = "hmcts-hub-prod-int"
   resource_group_name = "hmcts-hub-prod-int"
 }
+
+ftps = {
+  public_endpoint   = "dtsft.prod.apps.hmcts.net"
+  storage_sftp_host = "sftp-prod.example.invalid"
+}

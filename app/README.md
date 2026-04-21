@@ -7,6 +7,7 @@ This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to an
 - Control port: `990`
 - Passive FTPS ports: `1024-1028` by default for Azure Container Apps deployments
 - FTPS user credentials: provided at runtime
+- Multiple FTPS users can be supplied at runtime through `FTPS_LOCAL_USERS_JSON`
 - TLS certificate: provided at runtime as separate PEM secrets, a single combined PEM secret, or as a mounted combined PEM file
 - Forwarding target: SFTP username/password over `lftp mirror --reverse`
 - Forwarding host trust: the SFTP client currently uses `StrictHostKeyChecking=accept-new` so the first seen host key is accepted and then pinned for the life of that container filesystem
@@ -116,6 +117,7 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 - `FTPS_PUBLIC_IP`: Hostname or IP returned to FTPS clients for passive connections
 - `FTPS_LOCAL_USER`: FTPS login username
 - `FTPS_LOCAL_PASSWORD`: FTPS login password
+- `FTPS_LOCAL_USERS_JSON`: JSON array of FTPS login objects with `username` and `password`; when set, each user gets the same FTPS upload and download directories
 - `FTPS_CERTIFICATE_PATH`: Path to a combined PEM file containing private key and certificate
 - `FTPS_CERTIFICATE_PEM`: Certificate PEM content or a combined PEM bundle when injecting via secrets
 - `FTPS_CERTIFICATE_KEY_PEM`: Private key PEM content when injecting via secrets; optional when `FTPS_CERTIFICATE_PEM` already contains a combined PEM bundle
@@ -129,6 +131,21 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 - `FTPS_STORAGE_SFTP_USERNAME`: Destination SFTP username
 - `FTPS_STORAGE_SFTP_PASSWORD`: Destination SFTP password
 - `FTPS_STORAGE_SFTP_REMOTE_DIR`: Destination directory on the SFTP server
+
+Example `FTPS_LOCAL_USERS_JSON` value:
+
+```json
+[
+	{
+		"username": "ftpssvc",
+		"password": "replace-me"
+	},
+	{
+		"username": "partner-a",
+		"password": "replace-me-too"
+	}
+]
+```
 
 Current temporary SFTP trust behavior:
 

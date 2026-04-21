@@ -3,6 +3,7 @@ set -euo pipefail
 
 export FTPS_LOCAL_USER="${FTPS_LOCAL_USER:-ftpssvc}"
 export FTPS_LOCAL_PASSWORD="${FTPS_LOCAL_PASSWORD:-}"
+export FTPS_LOCAL_USERS_JSON="${FTPS_LOCAL_USERS_JSON:-}"
 export FTPS_LOCAL_ROOT="${FTPS_LOCAL_ROOT:-/srv/ftps/${FTPS_LOCAL_USER}}"
 export FTPS_LOCAL_UPLOAD_DIR="${FTPS_LOCAL_UPLOAD_DIR:-${FTPS_LOCAL_ROOT}/upload}"
 export FTPS_LOCAL_DOWNLOAD_DIR="${FTPS_LOCAL_DOWNLOAD_DIR:-${FTPS_LOCAL_ROOT}/download}"
@@ -21,26 +22,77 @@ export FTPS_ENABLE_STORAGE_FORWARD="${FTPS_ENABLE_STORAGE_FORWARD:-true}"
 export FTPS_FORWARD_INTERVAL_SECONDS="${FTPS_FORWARD_INTERVAL_SECONDS:-60}"
 export FTPS_FORWARD_LOCAL_DIR="${FTPS_FORWARD_LOCAL_DIR:-${FTPS_LOCAL_UPLOAD_DIR}}"
 export FTPS_FORWARD_DELETE_AFTER="${FTPS_FORWARD_DELETE_AFTER:-false}"
+export FTPS_LOCAL_GROUP="${FTPS_LOCAL_GROUP:-ftpsusers}"
 
-if [[ -z "${FTPS_LOCAL_PASSWORD}" ]]; then
-    echo "FTPS_LOCAL_PASSWORD must be set" >&2
+declare -a FTPS_CONFIGURED_USERS=()
+declare -A FTPS_CONFIGURED_PASSWORDS=()
+declare -A FTPS_CONFIGURED_PASSWORD_HASHES=()
+
+add_ftps_user() {
+    local username="$1"
+    local password="$2"
+
+    if [[ -z "${username}" || -z "${password}" ]]; then
+        echo "FTPS user definitions must include non-empty username and password values" >&2
+        exit 1
+    fi
+
+    if [[ -n "${FTPS_CONFIGURED_PASSWORDS["${username}"]+x}" ]]; then
+        if [[ "${FTPS_CONFIGURED_PASSWORDS["${username}"]}" != "${password}" ]]; then
+            echo "Duplicate FTPS username '${username}' has conflicting passwords" >&2
+            exit 1
+        fi
+        return 0
+    fi
+
+    FTPS_CONFIGURED_USERS+=("${username}")
+    FTPS_CONFIGURED_PASSWORDS["${username}"]="${password}"
+}
+
+if [[ -n "${FTPS_LOCAL_USERS_JSON}" ]]; then
+    if ! printf '%s' "${FTPS_LOCAL_USERS_JSON}" | jq -e 'type == "array" and all(.[]; type == "object" and (.username | type == "string") and (.password | type == "string") and (.username | length > 0) and (.password | length > 0))' >/dev/null; then
+        echo "FTPS_LOCAL_USERS_JSON must be a JSON array of objects with non-empty string username and password fields" >&2
+        exit 1
+    fi
+
+    while IFS= read -r ftps_user_entry; do
+        add_ftps_user \
+            "$(printf '%s' "${ftps_user_entry}" | jq -r '.username')" \
+            "$(printf '%s' "${ftps_user_entry}" | jq -r '.password')"
+    done < <(printf '%s' "${FTPS_LOCAL_USERS_JSON}" | jq -c '.[]')
+fi
+
+if [[ -n "${FTPS_LOCAL_PASSWORD}" ]]; then
+    add_ftps_user "${FTPS_LOCAL_USER}" "${FTPS_LOCAL_PASSWORD}"
+fi
+
+if [[ "${#FTPS_CONFIGURED_USERS[@]}" -eq 0 ]]; then
+    echo "At least one FTPS credential must be provided via FTPS_LOCAL_USERS_JSON or FTPS_LOCAL_USER/FTPS_LOCAL_PASSWORD" >&2
     exit 1
 fi
 
-groupadd -f "${FTPS_LOCAL_USER}"
-if ! id -u "${FTPS_LOCAL_USER}" >/dev/null 2>&1; then
-    useradd -g "${FTPS_LOCAL_USER}" -d "${FTPS_LOCAL_ROOT}" -M -s /bin/bash "${FTPS_LOCAL_USER}"
-fi
+groupadd -f "${FTPS_LOCAL_GROUP}"
 
-FTPS_LOCAL_PASSWORD_HASH="$(openssl passwd -6 "${FTPS_LOCAL_PASSWORD}")"
-usermod -p "${FTPS_LOCAL_PASSWORD_HASH}" "${FTPS_LOCAL_USER}"
+for FTPS_USERNAME in "${FTPS_CONFIGURED_USERS[@]}"; do
+    if ! id -u "${FTPS_USERNAME}" >/dev/null 2>&1; then
+        useradd -g "${FTPS_LOCAL_GROUP}" -d "${FTPS_LOCAL_ROOT}" -M -s /bin/bash "${FTPS_USERNAME}"
+    else
+        usermod -g "${FTPS_LOCAL_GROUP}" -d "${FTPS_LOCAL_ROOT}" "${FTPS_USERNAME}"
+    fi
+
+    FTPS_CONFIGURED_PASSWORD_HASHES["${FTPS_USERNAME}"]="$(openssl passwd -6 "${FTPS_CONFIGURED_PASSWORDS["${FTPS_USERNAME}"]}")"
+    usermod -p "${FTPS_CONFIGURED_PASSWORD_HASHES["${FTPS_USERNAME}"]}" "${FTPS_USERNAME}"
+done
+
+FTPS_PRIMARY_USER="${FTPS_CONFIGURED_USERS[0]}"
+FTPS_LOCAL_USER="${FTPS_PRIMARY_USER}"
 
 mkdir -p /srv/ftps "${FTPS_LOCAL_ROOT}" "${FTPS_LOCAL_UPLOAD_DIR}" "${FTPS_LOCAL_DOWNLOAD_DIR}" /var/log/proftpd
 chown root:root /srv/ftps "${FTPS_LOCAL_ROOT}"
 chmod 0755 /srv/ftps "${FTPS_LOCAL_ROOT}"
-chmod 0750 "${FTPS_LOCAL_UPLOAD_DIR}"
-chown "${FTPS_LOCAL_USER}:${FTPS_LOCAL_USER}" "${FTPS_LOCAL_UPLOAD_DIR}"
-chown root:"${FTPS_LOCAL_USER}" "${FTPS_LOCAL_DOWNLOAD_DIR}"
+chmod 0770 "${FTPS_LOCAL_UPLOAD_DIR}"
+chown "${FTPS_PRIMARY_USER}:${FTPS_LOCAL_GROUP}" "${FTPS_LOCAL_UPLOAD_DIR}"
+chown root:"${FTPS_LOCAL_GROUP}" "${FTPS_LOCAL_DOWNLOAD_DIR}"
 chmod 0550 "${FTPS_LOCAL_DOWNLOAD_DIR}"
 
 cat > "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt" <<EOF
@@ -49,7 +101,7 @@ HMCTS FTPS service
 Upload files into the upload directory.
 Download-only content can be placed in the download directory by an administrator.
 EOF
-chown root:"${FTPS_LOCAL_USER}" "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt"
+chown root:"${FTPS_LOCAL_GROUP}" "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt"
 chmod 0440 "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt"
 
 printf '%s\n' "${FTPS_WELCOME_MESSAGE}" > "${FTPS_BANNER_PATH}"
@@ -69,12 +121,16 @@ fi
 
 FTPS_RUNTIME_GROUP="${FTPS_CERTIFICATE_GROUP}"
 
-cat > "${FTPS_AUTH_USER_FILE}" <<EOF
-${FTPS_LOCAL_USER}:${FTPS_LOCAL_PASSWORD_HASH}:$(id -u "${FTPS_LOCAL_USER}"):$(id -g "${FTPS_LOCAL_USER}")::${FTPS_LOCAL_ROOT}:/bin/bash
-EOF
+FTPS_GROUP_ID="$(getent group "${FTPS_LOCAL_GROUP}" | cut -d: -f3)"
+FTPS_GROUP_MEMBERS="$(IFS=,; printf '%s' "${FTPS_CONFIGURED_USERS[*]}")"
+
+: > "${FTPS_AUTH_USER_FILE}"
+for FTPS_USERNAME in "${FTPS_CONFIGURED_USERS[@]}"; do
+    printf '%s\n' "${FTPS_USERNAME}:${FTPS_CONFIGURED_PASSWORD_HASHES["${FTPS_USERNAME}"]}:$(id -u "${FTPS_USERNAME}"):${FTPS_GROUP_ID}::${FTPS_LOCAL_ROOT}:/bin/bash" >> "${FTPS_AUTH_USER_FILE}"
+done
 
 cat > "${FTPS_AUTH_GROUP_FILE}" <<EOF
-${FTPS_LOCAL_USER}:x:$(id -g "${FTPS_LOCAL_USER}"):${FTPS_LOCAL_USER}
+${FTPS_LOCAL_GROUP}:x:${FTPS_GROUP_ID}:${FTPS_GROUP_MEMBERS}
 EOF
 
 chown root:"${FTPS_RUNTIME_GROUP}" "${FTPS_AUTH_DIR}" "${FTPS_AUTH_USER_FILE}" "${FTPS_AUTH_GROUP_FILE}"

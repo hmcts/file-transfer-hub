@@ -3,6 +3,22 @@ data "azurerm_key_vault" "this" {
   resource_group_name = "${local.name}-rg"
 }
 
+data "azurerm_log_analytics_workspace" "core" {
+  name                = local.core_log_analytics_workspace_name
+  resource_group_name = local.core_resource_group_name
+}
+
+data "azurerm_virtual_network" "core" {
+  name                = local.core_virtual_network_name
+  resource_group_name = local.core_resource_group_name
+}
+
+data "azurerm_subnet" "container_apps" {
+  name                 = local.core_container_apps_subnet_name
+  virtual_network_name = data.azurerm_virtual_network.core.name
+  resource_group_name  = local.core_resource_group_name
+}
+
 data "azurerm_key_vault_secret" "ftps" {
   for_each = {
     for secret in local.ftps_key_vault_secrets : secret.name => secret
@@ -28,7 +44,13 @@ resource "azurerm_role_assignment" "ftps_acr_pull" {
 
 locals {
   acr_registry_id               = "/subscriptions/${var.acr.subscription_id}/resourceGroups/${var.acr.resource_group_name}/providers/Microsoft.ContainerRegistry/registries/${var.acr.name}"
+  core_resource_group_name      = "${local.name}-rg"
+  core_log_analytics_workspace_name = "${local.name}-law"
+  core_virtual_network_name     = "hub-file-transfer-hub-vnet-${var.env}"
+  core_container_apps_subnet_name = "hub-file-transfer-hub-compute-${var.env}"
   ftps_certificate_key_vault_id = coalesce(var.ftps.certificate_key_vault_id, data.azurerm_key_vault.this.id)
+  ftps_container_apps_subnet_id = coalesce(var.container_apps_subnet_id, data.azurerm_subnet.container_apps.id)
+  ftps_log_analytics_workspace_id = coalesce(var.log_analytics_workspace_id, data.azurerm_log_analytics_workspace.core.id)
   ftps_storage_sftp_host        = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
   ftps_key_vault_secrets = concat(
     [
@@ -41,6 +63,11 @@ locals {
         name                  = var.ftps.local_password_secret_name
         key_vault_id          = data.azurerm_key_vault.this.id
         key_vault_secret_name = var.ftps.local_password_secret_name
+      },
+      {
+        name                  = var.ftps.local_users_secret_name
+        key_vault_id          = data.azurerm_key_vault.this.id
+        key_vault_secret_name = var.ftps.local_users_secret_name
       },
       {
         name                  = var.ftps.storage_sftp_user_secret_name
@@ -99,8 +126,8 @@ module "container_app" {
   existing_resource_group_name = "${local.name}-rg"
   location                     = var.location
 
-  log_analytics_workspace_id = var.log_analytics_workspace_id
-  subnet_id                  = var.container_apps_subnet_id
+  log_analytics_workspace_id = local.ftps_log_analytics_workspace_id
+  subnet_id                  = local.ftps_container_apps_subnet_id
 
   internal_load_balancer_enabled = true
 
@@ -131,6 +158,10 @@ module "container_app" {
             {
               name        = "FTPS_LOCAL_PASSWORD"
               secret_name = var.ftps.local_password_secret_name
+            },
+            {
+              name        = "FTPS_LOCAL_USERS_JSON"
+              secret_name = var.ftps.local_users_secret_name
             },
             {
               name  = "FTPS_PUBLIC_IP"

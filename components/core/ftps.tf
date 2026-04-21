@@ -2,6 +2,12 @@ locals {
   enable_storage_sftp_test_target = var.env != "prod"
   storage_sftp_host               = "${module.storage.storageaccount_name}.blob.core.windows.net"
   storage_sftp_username           = "${module.storage.storageaccount_name}.${var.ftps.storage_sftp_user}"
+  ftps_local_users_secret_value = jsonencode([
+    {
+      username = var.ftps.local_upload_user
+      password = random_password.ftps_local_password[0].result
+    }
+  ])
 }
 
 resource "random_password" "ftps_local_password" {
@@ -46,6 +52,14 @@ resource "azurerm_key_vault_secret" "ftps_local_password" {
   value        = random_password.ftps_local_password[0].result
   key_vault_id = azurerm_key_vault.this.id
   content_type = "text/plain"
+}
+
+resource "azurerm_key_vault_secret" "ftps_local_users" {
+  count        = local.enable_storage_sftp_test_target ? 1 : 0
+  name         = var.ftps.local_users_secret_name
+  value        = local.ftps_local_users_secret_value
+  key_vault_id = azurerm_key_vault.this.id
+  content_type = "application/json"
 }
 
 resource "azurerm_key_vault_secret" "ftps_storage_sftp_username" {

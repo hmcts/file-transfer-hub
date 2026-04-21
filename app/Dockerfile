@@ -7,6 +7,7 @@ RUN apt-get update \
     bash \
     ca-certificates \
     gettext-base \
+    jq \
     lftp \
     openssh-client \
     openssl \

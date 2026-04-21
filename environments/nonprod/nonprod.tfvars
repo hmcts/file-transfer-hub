@@ -10,10 +10,6 @@ hub = {
   resource_group_name = "hmcts-hub-nonprodi"
 }
 
-container_app = {
-  image = "hmctsprod.azurecr.io/file-transfer-hub/ftps-server:main"
-}
-
 ftps = {
   public_endpoint             = "dtsft.demo.apps.hmcts.net"
   certificate_key_vault_id    = "/subscriptions/d025fece-ce99-4df2-b7a9-b649d3ff2060/resourceGroups/cft-platform-demo-rg/providers/Microsoft.KeyVault/vaults/acmedcdcftappsdemo"

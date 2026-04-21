@@ -15,6 +15,7 @@ export FTPS_AUTH_GROUP_FILE="${FTPS_AUTH_GROUP_FILE:-/etc/proftpd/auth/ftpd.grou
 export FTPS_CERTIFICATE_PATH="${FTPS_CERTIFICATE_PATH:-/etc/proftpd/tls/ftps.pem}"
 export FTPS_CERTIFICATE_PEM="${FTPS_CERTIFICATE_PEM:-}"
 export FTPS_CERTIFICATE_KEY_PEM="${FTPS_CERTIFICATE_KEY_PEM:-}"
+export FTPS_CERTIFICATE_PKCS12_PASSWORD="${FTPS_CERTIFICATE_PKCS12_PASSWORD:-}"
 export FTPS_PUBLIC_IP="${FTPS_PUBLIC_IP:-localhost}"
 export FTPS_LISTEN_PORT="${FTPS_LISTEN_PORT:-990}"
 export FTPS_PASSIVE_MIN_PORT="${FTPS_PASSIVE_MIN_PORT:-1024}"
@@ -24,10 +25,20 @@ export FTPS_FORWARD_INTERVAL_SECONDS="${FTPS_FORWARD_INTERVAL_SECONDS:-60}"
 export FTPS_FORWARD_LOCAL_DIR="${FTPS_FORWARD_LOCAL_DIR:-${FTPS_LOCAL_UPLOAD_DIR}}"
 export FTPS_FORWARD_DELETE_AFTER="${FTPS_FORWARD_DELETE_AFTER:-false}"
 
+ftps_log() {
+    printf '[ftps-entrypoint] %s\n' "$*"
+}
+
+ftps_warn() {
+    printf '[ftps-entrypoint] %s\n' "$*" >&2
+}
+
 if [[ -z "${FTPS_LOCAL_PASSWORD}" ]]; then
-    echo "FTPS_LOCAL_PASSWORD must be set" >&2
+    ftps_warn "FTPS_LOCAL_PASSWORD must be set"
     exit 1
 fi
+
+ftps_log "Starting FTPS container setup"
 
 if [[ -n "${FTPS_ADDITIONAL_USER}" && -z "${FTPS_ADDITIONAL_PASSWORD}" ]]; then
     echo "FTPS_ADDITIONAL_PASSWORD must be set when FTPS_ADDITIONAL_USER is provided" >&2
@@ -133,25 +144,76 @@ chmod 0640 "${FTPS_AUTH_USER_FILE}" "${FTPS_AUTH_GROUP_FILE}"
 FTPS_CERTIFICATE_DIR="$(dirname "${FTPS_CERTIFICATE_PATH}")"
 FTPS_CERTIFICATE_MANAGED="false"
 
+ftps_extract_pem_blocks() {
+    local source_file="$1"
+    local destination_file="$2"
+
+    awk '
+        /-----BEGIN / { capture=1 }
+        capture { print }
+        /-----END / { capture=0 }
+    ' "${source_file}" > "${destination_file}"
+}
+
+ftps_write_pkcs12_bundle() {
+    local encoded_bundle="$1"
+    local bundle_file raw_pem_file
+
+    ftps_log "Certificate content does not look like PEM; attempting PKCS12 conversion"
+
+    bundle_file="$(mktemp)"
+    raw_pem_file="$(mktemp)"
+    trap 'rm -f "${bundle_file}" "${raw_pem_file}"' RETURN
+
+    if ! printf '%s' "${encoded_bundle}" | base64 -d > "${bundle_file}" 2>/dev/null; then
+        ftps_warn "FTPS certificate value is not PEM and could not be base64-decoded as PKCS12"
+        exit 1
+    fi
+
+    if ! openssl pkcs12 -in "${bundle_file}" -nodes -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" >/dev/null 2>&1; then
+        ftps_warn "FTPS certificate PKCS12 bundle could not be converted to PEM"
+        exit 1
+    fi
+
+    ftps_extract_pem_blocks "${raw_pem_file}" "${FTPS_CERTIFICATE_PATH}"
+
+    if ! grep -q 'BEGIN CERTIFICATE' "${FTPS_CERTIFICATE_PATH}" || ! grep -Eq 'BEGIN (RSA |EC |ENCRYPTED )?PRIVATE KEY' "${FTPS_CERTIFICATE_PATH}"; then
+        ftps_warn "FTPS certificate PKCS12 bundle did not produce both certificate and private key PEM blocks"
+        exit 1
+    fi
+
+    ftps_log "PKCS12 conversion completed and PEM bundle written"
+}
+
 if [[ ! -d "${FTPS_CERTIFICATE_DIR}" ]]; then
     install -d -m 0750 -o root -g "${FTPS_CERTIFICATE_GROUP}" "${FTPS_CERTIFICATE_DIR}"
 fi
 
 if [[ -n "${FTPS_CERTIFICATE_PEM}" && -n "${FTPS_CERTIFICATE_KEY_PEM}" && "${FTPS_CERTIFICATE_PEM}" != "${FTPS_CERTIFICATE_KEY_PEM}" ]]; then
+    ftps_log "Using separate PEM certificate and private key environment variables"
     cat > "${FTPS_CERTIFICATE_PATH}" <<EOF
 ${FTPS_CERTIFICATE_KEY_PEM}
 ${FTPS_CERTIFICATE_PEM}
 EOF
     FTPS_CERTIFICATE_MANAGED="true"
 elif [[ -n "${FTPS_CERTIFICATE_PEM}" ]]; then
-    printf '%s\n' "${FTPS_CERTIFICATE_PEM}" > "${FTPS_CERTIFICATE_PATH}"
+    if [[ "${FTPS_CERTIFICATE_PEM}" == *"-----BEGIN "* ]]; then
+        ftps_log "Using PEM certificate content from environment variable"
+        printf '%s\n' "${FTPS_CERTIFICATE_PEM}" > "${FTPS_CERTIFICATE_PATH}"
+    else
+        ftps_write_pkcs12_bundle "${FTPS_CERTIFICATE_PEM}"
+    fi
     FTPS_CERTIFICATE_MANAGED="true"
+else
+    ftps_log "No certificate content provided in environment; expecting mounted certificate file at ${FTPS_CERTIFICATE_PATH}"
 fi
 
 if [[ ! -f "${FTPS_CERTIFICATE_PATH}" ]]; then
-    echo "FTPS certificate not found at ${FTPS_CERTIFICATE_PATH} and FTPS certificate environment variables were not provided" >&2
+    ftps_warn "FTPS certificate not found at ${FTPS_CERTIFICATE_PATH} and FTPS certificate environment variables were not provided"
     exit 1
 fi
+
+ftps_log "Certificate file ready at ${FTPS_CERTIFICATE_PATH}"
 
 if [[ "${FTPS_CERTIFICATE_MANAGED}" == "true" ]]; then
     chown root:"${FTPS_CERTIFICATE_GROUP}" "${FTPS_CERTIFICATE_PATH}"
@@ -161,13 +223,21 @@ fi
 sed -i 's/^#\?LoadModule mod_tls.c/LoadModule mod_tls.c/' /etc/proftpd/modules.conf
 envsubst < /etc/proftpd/proftpd-ftps.conf.template > /etc/proftpd/conf.d/hmcts-ftps.conf
 
+ftps_log "ProFTPD configuration rendered"
+
 if [[ "${FTPS_ENABLE_STORAGE_FORWARD}" == "true" ]]; then
+    ftps_log "Starting background storage forwarding loop"
     (
         while true; do
-            /usr/local/bin/ftps-storage-forward.sh || true
+            if ! /usr/local/bin/ftps-storage-forward.sh; then
+                ftps_warn "Storage forwarding iteration failed; will retry in ${FTPS_FORWARD_INTERVAL_SECONDS} seconds"
+            fi
             sleep "${FTPS_FORWARD_INTERVAL_SECONDS}"
         done
     ) &
+else
+    ftps_log "Storage forwarding loop disabled"
 fi
 
+ftps_log "Launching ProFTPD"
 exec /usr/sbin/proftpd -n -c /etc/proftpd/proftpd.conf

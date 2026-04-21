@@ -7,7 +7,7 @@ This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to an
 - Control port: `990`
 - Passive FTPS ports: `1024-1028` by default for Azure Container Apps deployments
 - FTPS user credentials: provided at runtime
-- TLS certificate: provided at runtime as separate PEM secrets, a single combined PEM secret, or as a mounted combined PEM file
+- TLS certificate: provided at runtime as separate PEM secrets, a single combined PEM secret, a base64-encoded PKCS#12 bundle, or as a mounted combined PEM file
 - Forwarding target: SFTP username/password over `lftp mirror --reverse`
 - Forwarding host trust: the SFTP client currently uses `StrictHostKeyChecking=accept-new` so the first seen host key is accepted and then pinned for the life of that container filesystem
 
@@ -121,6 +121,9 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 - `FTPS_CERTIFICATE_PATH`: Path to a combined PEM file containing private key and certificate
 - `FTPS_CERTIFICATE_PEM`: Certificate PEM content or a combined PEM bundle when injecting via secrets
 - `FTPS_CERTIFICATE_KEY_PEM`: Private key PEM content when injecting via secrets; optional when `FTPS_CERTIFICATE_PEM` already contains a combined PEM bundle
+- `FTPS_CERTIFICATE_PKCS12_PASSWORD`: Optional password for PKCS#12 bundles passed via `FTPS_CERTIFICATE_PEM`; defaults to empty
+
+When `FTPS_CERTIFICATE_PEM` does not contain PEM markers, the container treats it as a base64-encoded PKCS#12 bundle, converts it to a combined PEM file at startup, and then starts ProFTPD with that generated PEM.
 - `FTPS_PASSIVE_MIN_PORT`: First passive FTPS data port
 - `FTPS_PASSIVE_MAX_PORT`: Last passive FTPS data port
 - `FTPS_ENABLE_STORAGE_FORWARD`: Enables the background SFTP forwarding loop

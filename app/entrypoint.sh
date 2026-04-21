@@ -3,6 +3,8 @@ set -euo pipefail
 
 export FTPS_LOCAL_USER="${FTPS_LOCAL_USER:-ftpssvc}"
 export FTPS_LOCAL_PASSWORD="${FTPS_LOCAL_PASSWORD:-}"
+export FTPS_ADDITIONAL_USER="${FTPS_ADDITIONAL_USER:-}"
+export FTPS_ADDITIONAL_PASSWORD="${FTPS_ADDITIONAL_PASSWORD:-}"
 export FTPS_LOCAL_ROOT="${FTPS_LOCAL_ROOT:-/srv/ftps/${FTPS_LOCAL_USER}}"
 export FTPS_LOCAL_UPLOAD_DIR="${FTPS_LOCAL_UPLOAD_DIR:-${FTPS_LOCAL_ROOT}/upload}"
 export FTPS_LOCAL_DOWNLOAD_DIR="${FTPS_LOCAL_DOWNLOAD_DIR:-${FTPS_LOCAL_ROOT}/download}"
@@ -27,20 +29,60 @@ if [[ -z "${FTPS_LOCAL_PASSWORD}" ]]; then
     exit 1
 fi
 
-groupadd -f "${FTPS_LOCAL_USER}"
+if [[ -n "${FTPS_ADDITIONAL_USER}" && -z "${FTPS_ADDITIONAL_PASSWORD}" ]]; then
+    echo "FTPS_ADDITIONAL_PASSWORD must be set when FTPS_ADDITIONAL_USER is provided" >&2
+    exit 1
+fi
+
+if [[ -z "${FTPS_ADDITIONAL_USER}" && -n "${FTPS_ADDITIONAL_PASSWORD}" ]]; then
+    echo "FTPS_ADDITIONAL_USER must be set when FTPS_ADDITIONAL_PASSWORD is provided" >&2
+    exit 1
+fi
+
+if [[ "${FTPS_ADDITIONAL_USER}" == "${FTPS_LOCAL_USER}" ]]; then
+    echo "FTPS_ADDITIONAL_USER must be different from FTPS_LOCAL_USER" >&2
+    exit 1
+fi
+
+FTPS_SHARED_GROUP="${FTPS_LOCAL_USER}"
+FTPS_AUTH_GROUP_NAME="${FTPS_LOCAL_USER}"
+
+if [[ -n "${FTPS_ADDITIONAL_USER}" ]]; then
+    FTPS_SHARED_GROUP="ftpsusers"
+    FTPS_AUTH_GROUP_NAME="${FTPS_SHARED_GROUP}"
+fi
+
+groupadd -f "${FTPS_SHARED_GROUP}"
 if ! id -u "${FTPS_LOCAL_USER}" >/dev/null 2>&1; then
-    useradd -g "${FTPS_LOCAL_USER}" -d "${FTPS_LOCAL_ROOT}" -M -s /bin/bash "${FTPS_LOCAL_USER}"
+    useradd -g "${FTPS_SHARED_GROUP}" -d "${FTPS_LOCAL_ROOT}" -M -s /bin/bash "${FTPS_LOCAL_USER}"
+else
+    usermod -g "${FTPS_SHARED_GROUP}" -d "${FTPS_LOCAL_ROOT}" "${FTPS_LOCAL_USER}"
 fi
 
 FTPS_LOCAL_PASSWORD_HASH="$(openssl passwd -6 "${FTPS_LOCAL_PASSWORD}")"
 usermod -p "${FTPS_LOCAL_PASSWORD_HASH}" "${FTPS_LOCAL_USER}"
 
+if [[ -n "${FTPS_ADDITIONAL_USER}" ]]; then
+    if ! id -u "${FTPS_ADDITIONAL_USER}" >/dev/null 2>&1; then
+        useradd -g "${FTPS_SHARED_GROUP}" -d "${FTPS_LOCAL_ROOT}" -M -s /bin/bash "${FTPS_ADDITIONAL_USER}"
+    else
+        usermod -g "${FTPS_SHARED_GROUP}" -d "${FTPS_LOCAL_ROOT}" "${FTPS_ADDITIONAL_USER}"
+    fi
+
+    FTPS_ADDITIONAL_PASSWORD_HASH="$(openssl passwd -6 "${FTPS_ADDITIONAL_PASSWORD}")"
+    usermod -p "${FTPS_ADDITIONAL_PASSWORD_HASH}" "${FTPS_ADDITIONAL_USER}"
+fi
+
 mkdir -p /srv/ftps "${FTPS_LOCAL_ROOT}" "${FTPS_LOCAL_UPLOAD_DIR}" "${FTPS_LOCAL_DOWNLOAD_DIR}" /var/log/proftpd
 chown root:root /srv/ftps "${FTPS_LOCAL_ROOT}"
 chmod 0755 /srv/ftps "${FTPS_LOCAL_ROOT}"
-chmod 0750 "${FTPS_LOCAL_UPLOAD_DIR}"
-chown "${FTPS_LOCAL_USER}:${FTPS_LOCAL_USER}" "${FTPS_LOCAL_UPLOAD_DIR}"
-chown root:"${FTPS_LOCAL_USER}" "${FTPS_LOCAL_DOWNLOAD_DIR}"
+if [[ -n "${FTPS_ADDITIONAL_USER}" ]]; then
+    chmod 0770 "${FTPS_LOCAL_UPLOAD_DIR}"
+else
+    chmod 0750 "${FTPS_LOCAL_UPLOAD_DIR}"
+fi
+chown "${FTPS_LOCAL_USER}:${FTPS_SHARED_GROUP}" "${FTPS_LOCAL_UPLOAD_DIR}"
+chown root:"${FTPS_SHARED_GROUP}" "${FTPS_LOCAL_DOWNLOAD_DIR}"
 chmod 0550 "${FTPS_LOCAL_DOWNLOAD_DIR}"
 
 cat > "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt" <<EOF
@@ -49,7 +91,7 @@ HMCTS FTPS service
 Upload files into the upload directory.
 Download-only content can be placed in the download directory by an administrator.
 EOF
-chown root:"${FTPS_LOCAL_USER}" "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt"
+chown root:"${FTPS_SHARED_GROUP}" "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt"
 chmod 0440 "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt"
 
 printf '%s\n' "${FTPS_WELCOME_MESSAGE}" > "${FTPS_BANNER_PATH}"
@@ -68,13 +110,20 @@ if [[ "$(dirname "${FTPS_AUTH_GROUP_FILE}")" != "${FTPS_AUTH_DIR}" ]]; then
 fi
 
 FTPS_RUNTIME_GROUP="${FTPS_CERTIFICATE_GROUP}"
+FTPS_AUTH_GROUP_ID="$(id -g "${FTPS_LOCAL_USER}")"
 
 cat > "${FTPS_AUTH_USER_FILE}" <<EOF
-${FTPS_LOCAL_USER}:${FTPS_LOCAL_PASSWORD_HASH}:$(id -u "${FTPS_LOCAL_USER}"):$(id -g "${FTPS_LOCAL_USER}")::${FTPS_LOCAL_ROOT}:/bin/bash
+${FTPS_LOCAL_USER}:${FTPS_LOCAL_PASSWORD_HASH}:$(id -u "${FTPS_LOCAL_USER}"):${FTPS_AUTH_GROUP_ID}::${FTPS_LOCAL_ROOT}:/bin/bash
 EOF
 
+if [[ -n "${FTPS_ADDITIONAL_USER}" ]]; then
+    cat >> "${FTPS_AUTH_USER_FILE}" <<EOF
+${FTPS_ADDITIONAL_USER}:${FTPS_ADDITIONAL_PASSWORD_HASH}:$(id -u "${FTPS_ADDITIONAL_USER}"):${FTPS_AUTH_GROUP_ID}::${FTPS_LOCAL_ROOT}:/bin/bash
+EOF
+fi
+
 cat > "${FTPS_AUTH_GROUP_FILE}" <<EOF
-${FTPS_LOCAL_USER}:x:$(id -g "${FTPS_LOCAL_USER}"):${FTPS_LOCAL_USER}
+${FTPS_AUTH_GROUP_NAME}:x:${FTPS_AUTH_GROUP_ID}:${FTPS_LOCAL_USER}${FTPS_ADDITIONAL_USER:+,${FTPS_ADDITIONAL_USER}}
 EOF
 
 chown root:"${FTPS_RUNTIME_GROUP}" "${FTPS_AUTH_DIR}" "${FTPS_AUTH_USER_FILE}" "${FTPS_AUTH_GROUP_FILE}"

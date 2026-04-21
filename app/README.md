@@ -116,6 +116,8 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 - `FTPS_PUBLIC_IP`: Hostname or IP returned to FTPS clients for passive connections
 - `FTPS_LOCAL_USER`: FTPS login username
 - `FTPS_LOCAL_PASSWORD`: FTPS login password
+- `FTPS_ADDITIONAL_USER`: Optional second FTPS login username
+- `FTPS_ADDITIONAL_PASSWORD`: Optional second FTPS login password
 - `FTPS_CERTIFICATE_PATH`: Path to a combined PEM file containing private key and certificate
 - `FTPS_CERTIFICATE_PEM`: Certificate PEM content or a combined PEM bundle when injecting via secrets
 - `FTPS_CERTIFICATE_KEY_PEM`: Private key PEM content when injecting via secrets; optional when `FTPS_CERTIFICATE_PEM` already contains a combined PEM bundle

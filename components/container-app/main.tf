@@ -133,7 +133,7 @@ module "container_app" {
       key_vault_secrets     = local.ftps_key_vault_secrets
       containers = {
         ftps-server = {
-          image  = var.container_app.image
+          image  = coalesce(var.container_app_image, var.container_app.image)
           cpu    = var.container_app.cpu
           memory = var.container_app.memory
           env = concat(

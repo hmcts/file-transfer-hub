@@ -11,7 +11,7 @@ resources:
   repositories:
     - repository: cnp-azuredevops-libraries
       type: github
-      ref: refs/heads/master
+      ref: refs/heads/copilot/tfswitch-pgp-key-workaround
       name: hmcts/cnp-azuredevops-libraries
       endpoint: "hmcts"
 
@@ -47,10 +47,9 @@ parameters:
         environment: "prod"
         component: "container-app"
         service_connection: "HMCTS-HUB-PROD-INTSVC"
-        dependsOn: 
+        dependsOn:
           - "prod_core"
           - "nonprod_container_app"
-
 
 variables:
   - name: timeoutInMinutes

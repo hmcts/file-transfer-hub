@@ -41,7 +41,7 @@ locals {
       key_vault_secret_name = "ho-moj-ftps-demo-password"
     }
   ]
-  ftps_storage_sftp_host        = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
+  ftps_storage_sftp_host = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
   ftps_key_vault_secrets = concat(
     [
       {

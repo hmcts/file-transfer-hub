@@ -63,6 +63,8 @@ variables:
   - template: vars/input-variables.yaml@cnp-azuredevops-libraries
   - name: imageRepository
     value: file-transfer-hub/ftps-server
+  - name: containerAppImage
+    value: hmctsprod.azurecr.io/file-transfer-hub/ftps-server:$(Build.BuildId)
 
 stages:
   - stage: TerraformPrecheck
@@ -150,6 +152,8 @@ stages:
                       "log_analytics_workspace_id=$(log_analytics_workspace_id)"
                       -var
                       "container_apps_subnet_id=$(container_apps_subnet_id)"
+                      -var
+                      'container_app={image="$(containerAppImage)"}'
               - ${{ if eq(deployment.component, 'core') }}:
                   - task: AzureCLI@2
                     name: terraformOutputs

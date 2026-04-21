@@ -123,7 +123,9 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 - `FTPS_CERTIFICATE_KEY_PEM`: Private key PEM content when injecting via secrets; optional when `FTPS_CERTIFICATE_PEM` already contains a combined PEM bundle
 - `FTPS_CERTIFICATE_PKCS12_PASSWORD`: Optional password for PKCS#12 bundles passed via `FTPS_CERTIFICATE_PEM`; defaults to empty
 
-When `FTPS_CERTIFICATE_PEM` does not contain PEM markers, the container treats it as a base64-encoded PKCS#12 bundle, converts it to a combined PEM file at startup, and then starts ProFTPD with that generated PEM.
+When `FTPS_CERTIFICATE_PEM` does not contain PEM markers, the container treats it as a base64-encoded PKCS#12 bundle, converts it to PEM at startup, and rebuilds the bundle so the private key is paired with the matching leaf certificate before any chain certificates.
+
+When PEM content is injected directly, startup applies the same normalization and now fails early if the secret content does not include both a private key and a certificate that matches that key.
 - `FTPS_PASSIVE_MIN_PORT`: First passive FTPS data port
 - `FTPS_PASSIVE_MAX_PORT`: Last passive FTPS data port
 - `FTPS_ENABLE_STORAGE_FORWARD`: Enables the background SFTP forwarding loop

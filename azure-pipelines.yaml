@@ -47,10 +47,9 @@ parameters:
         environment: "prod"
         component: "container-app"
         service_connection: "HMCTS-HUB-PROD-INTSVC"
-        dependsOn: 
+        dependsOn:
           - "prod_core"
           - "nonprod_container_app"
-
 
 variables:
   - name: timeoutInMinutes

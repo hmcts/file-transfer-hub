@@ -1,6 +1,7 @@
 locals {
   enable_storage_sftp_test_target = var.env != "prod"
   storage_sftp_host               = "${module.storage.storageaccount_name}.blob.core.windows.net"
+  storage_sftp_username           = "${module.storage.storageaccount_name}.${var.ftps.storage_sftp_user}"
 }
 
 resource "random_password" "ftps_local_password" {
@@ -50,7 +51,7 @@ resource "azurerm_key_vault_secret" "ftps_local_password" {
 resource "azurerm_key_vault_secret" "ftps_storage_sftp_username" {
   count        = local.enable_storage_sftp_test_target ? 1 : 0
   name         = var.ftps.storage_sftp_user_secret_name
-  value        = azurerm_storage_account_local_user.ftps_forwarder[0].name
+  value        = local.storage_sftp_username
   key_vault_id = azurerm_key_vault.this.id
   content_type = "text/plain"
 }

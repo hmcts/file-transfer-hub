@@ -79,6 +79,12 @@ locals {
       }
     ]
   )
+  ftps_container_app_secrets = [
+    for secret in local.ftps_key_vault_secrets : {
+      name  = secret.name
+      value = data.azurerm_key_vault_secret.ftps[secret.name].value
+    }
+  ]
   ftps_passive_ports = [for port in range(var.ftps.passive_port_min, var.ftps.passive_port_max + 1) : {
     port         = port
     external     = true

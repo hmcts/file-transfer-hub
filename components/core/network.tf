@@ -44,7 +44,7 @@ module "networking" {
   network_security_groups = {
     nsg = {
       subnets = ["${local.vnet_key}-general", "${local.vnet_key}-compute"]
-      # rules = {
+      rules = {
       #   allow_vnet_inbound = {
       #     priority                   = 4010
       #     direction                  = "Inbound"
@@ -65,7 +65,7 @@ module "networking" {
       #     source_address_prefix      = "AzureLoadBalancer"
       #     destination_address_prefix = "*"
       #   }
-      # }
+      }
     }
   }
 }

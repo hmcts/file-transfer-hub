@@ -13,6 +13,8 @@ export FTPS_WELCOME_MESSAGE="${FTPS_WELCOME_MESSAGE:-HMCTS FTPS service ready.}"
 export FTPS_AUTH_USER_FILE="${FTPS_AUTH_USER_FILE:-/etc/proftpd/auth/ftpd.passwd}"
 export FTPS_AUTH_GROUP_FILE="${FTPS_AUTH_GROUP_FILE:-/etc/proftpd/auth/ftpd.group}"
 export FTPS_CERTIFICATE_PATH="${FTPS_CERTIFICATE_PATH:-/etc/proftpd/tls/ftps.pem}"
+export FTPS_PROFTPD_CERTIFICATE_PATH="${FTPS_PROFTPD_CERTIFICATE_PATH:-/etc/proftpd/tls/runtime/server.pem}"
+export FTPS_PROFTPD_CHAIN_PATH="${FTPS_PROFTPD_CHAIN_PATH:-/etc/proftpd/tls/runtime/chain.pem}"
 export FTPS_CERTIFICATE_PEM="${FTPS_CERTIFICATE_PEM:-}"
 export FTPS_CERTIFICATE_KEY_PEM="${FTPS_CERTIFICATE_KEY_PEM:-}"
 export FTPS_CERTIFICATE_PKCS12_PASSWORD="${FTPS_CERTIFICATE_PKCS12_PASSWORD:-}"
@@ -122,6 +124,7 @@ fi
 
 FTPS_RUNTIME_GROUP="${FTPS_CERTIFICATE_GROUP}"
 FTPS_AUTH_GROUP_ID="$(id -g "${FTPS_LOCAL_USER}")"
+export FTPS_TLS_CHAIN_DIRECTIVE=""
 
 cat > "${FTPS_AUTH_USER_FILE}" <<EOF
 ${FTPS_LOCAL_USER}:${FTPS_LOCAL_PASSWORD_HASH}:$(id -u "${FTPS_LOCAL_USER}"):${FTPS_AUTH_GROUP_ID}::${FTPS_LOCAL_ROOT}:/bin/bash
@@ -255,6 +258,76 @@ ftps_normalize_pem_bundle() {
     rm -f "${private_key_file}" "${certificate_prefix}".*
 }
 
+ftps_prepare_proftpd_tls_material() {
+    local source_file="$1"
+    local certificate_file="$2"
+    local chain_file="$3"
+    local private_key_file certificate_prefix certificate_count matching_certificate_index certificate_index
+
+    private_key_file="$(mktemp)"
+    certificate_prefix="$(mktemp)"
+
+    if ! ftps_extract_private_key_block "${source_file}" "${private_key_file}"; then
+        rm -f "${private_key_file}" "${certificate_prefix}".*
+        ftps_warn "FTPS certificate content did not contain a private key PEM block"
+        exit 1
+    fi
+
+    certificate_count="$(ftps_extract_certificate_blocks "${source_file}" "${certificate_prefix}")"
+    if [[ "${certificate_count}" -eq 0 ]]; then
+        rm -f "${private_key_file}" "${certificate_prefix}".*
+        ftps_warn "FTPS certificate content did not contain any certificate PEM blocks"
+        exit 1
+    fi
+
+    matching_certificate_index=""
+    for certificate_index in $(seq 1 "${certificate_count}"); do
+        if ftps_certificate_matches_private_key "${certificate_prefix}.${certificate_index}" "${private_key_file}"; then
+            matching_certificate_index="${certificate_index}"
+            break
+        fi
+    done
+
+    if [[ -z "${matching_certificate_index}" ]]; then
+        rm -f "${private_key_file}" "${certificate_prefix}".*
+        ftps_warn "FTPS certificate content did not contain a certificate matching the supplied private key"
+        exit 1
+    fi
+
+    install -d -m 0750 -o root -g "${FTPS_CERTIFICATE_GROUP}" "$(dirname "${certificate_file}")"
+    install -d -m 0750 -o root -g "${FTPS_CERTIFICATE_GROUP}" "$(dirname "${chain_file}")"
+
+    cat "${private_key_file}" > "${certificate_file}"
+    cat "${certificate_prefix}.${matching_certificate_index}" >> "${certificate_file}"
+
+    if [[ "${certificate_count}" -gt 1 ]]; then
+        : > "${chain_file}"
+
+        for certificate_index in $(seq 1 "${certificate_count}"); do
+            if [[ "${certificate_index}" == "${matching_certificate_index}" ]]; then
+                continue
+            fi
+
+            cat "${certificate_prefix}.${certificate_index}" >> "${chain_file}"
+        done
+
+        FTPS_TLS_CHAIN_DIRECTIVE="  TLSCertificateChainFile       ${chain_file}"
+    else
+        rm -f "${chain_file}"
+        FTPS_TLS_CHAIN_DIRECTIVE=""
+    fi
+
+    chown root:"${FTPS_CERTIFICATE_GROUP}" "${certificate_file}"
+    chmod 0640 "${certificate_file}"
+
+    if [[ -n "${FTPS_TLS_CHAIN_DIRECTIVE}" ]]; then
+        chown root:"${FTPS_CERTIFICATE_GROUP}" "${chain_file}"
+        chmod 0640 "${chain_file}"
+    fi
+
+    rm -f "${private_key_file}" "${certificate_prefix}".*
+}
+
 ftps_write_pkcs12_bundle() {
     local encoded_bundle="$1"
     local bundle_file raw_pem_file
@@ -324,6 +397,16 @@ ftps_log "Certificate file ready at ${FTPS_CERTIFICATE_PATH}"
 if [[ "${FTPS_CERTIFICATE_MANAGED}" == "true" ]]; then
     chown root:"${FTPS_CERTIFICATE_GROUP}" "${FTPS_CERTIFICATE_PATH}"
     chmod 0640 "${FTPS_CERTIFICATE_PATH}"
+fi
+
+ftps_prepare_proftpd_tls_material \
+    "${FTPS_CERTIFICATE_PATH}" \
+    "${FTPS_PROFTPD_CERTIFICATE_PATH}" \
+    "${FTPS_PROFTPD_CHAIN_PATH}"
+
+ftps_log "Prepared ProFTPD TLS material at ${FTPS_PROFTPD_CERTIFICATE_PATH}"
+if [[ -n "${FTPS_TLS_CHAIN_DIRECTIVE}" ]]; then
+    ftps_log "Prepared ProFTPD certificate chain at ${FTPS_PROFTPD_CHAIN_PATH}"
 fi
 
 sed -i 's/^#\?LoadModule mod_tls.c/LoadModule mod_tls.c/' /etc/proftpd/modules.conf

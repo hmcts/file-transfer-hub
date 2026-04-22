@@ -26,8 +26,9 @@ SystemLog                       /var/log/proftpd/proftpd.log
   TLSEngine                     on
   TLSLog                        /var/log/proftpd/tls.log
   TLSProtocol                   TLSv1.2 TLSv1.3
-  TLSRSACertificateFile         ${FTPS_CERTIFICATE_PATH}
-  TLSRSACertificateKeyFile      ${FTPS_CERTIFICATE_PATH}
+  TLSRSACertificateFile         ${FTPS_PROFTPD_CERTIFICATE_PATH}
+  TLSRSACertificateKeyFile      ${FTPS_PROFTPD_CERTIFICATE_PATH}
+${FTPS_TLS_CHAIN_DIRECTIVE}
   TLSRequired                   on
   TLSOptions                    NoSessionReuseRequired UseImplicitSSL
   TLSVerifyClient               off

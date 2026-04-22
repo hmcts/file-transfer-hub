@@ -190,21 +190,20 @@ ftps_extract_certificate_blocks() {
 ftps_certificate_matches_private_key() {
     local certificate_file="$1"
     local private_key_file="$2"
-    local certificate_public_key_file private_key_public_key_file
+    local certificate_public_key_file private_key_public_key_file result
 
     certificate_public_key_file="$(mktemp)"
     private_key_public_key_file="$(mktemp)"
-    trap 'rm -f "${certificate_public_key_file:-}" "${private_key_public_key_file:-}"' RETURN
 
-    if ! openssl x509 -in "${certificate_file}" -pubkey -noout > "${certificate_public_key_file}" 2>/dev/null; then
-        return 1
+    result=1
+    if openssl x509 -in "${certificate_file}" -pubkey -noout > "${certificate_public_key_file}" 2>/dev/null &&
+       openssl pkey -in "${private_key_file}" -pubout > "${private_key_public_key_file}" 2>/dev/null &&
+       cmp -s "${certificate_public_key_file}" "${private_key_public_key_file}"; then
+        result=0
     fi
 
-    if ! openssl pkey -in "${private_key_file}" -pubout > "${private_key_public_key_file}" 2>/dev/null; then
-        return 1
-    fi
-
-    cmp -s "${certificate_public_key_file}" "${private_key_public_key_file}"
+    rm -f "${certificate_public_key_file}" "${private_key_public_key_file}"
+    return "${result}"
 }
 
 ftps_normalize_pem_bundle() {
@@ -214,15 +213,16 @@ ftps_normalize_pem_bundle() {
 
     private_key_file="$(mktemp)"
     certificate_prefix="$(mktemp)"
-    trap 'rm -f "${private_key_file:-}"; if [[ -n "${certificate_prefix:-}" ]]; then rm -f "${certificate_prefix}".*; fi' RETURN
 
     if ! ftps_extract_private_key_block "${source_file}" "${private_key_file}"; then
+        rm -f "${private_key_file}" "${certificate_prefix}".*
         ftps_warn "FTPS certificate content did not contain a private key PEM block"
         exit 1
     fi
 
     certificate_count="$(ftps_extract_certificate_blocks "${source_file}" "${certificate_prefix}")"
     if [[ "${certificate_count}" -eq 0 ]]; then
+        rm -f "${private_key_file}" "${certificate_prefix}".*
         ftps_warn "FTPS certificate content did not contain any certificate PEM blocks"
         exit 1
     fi
@@ -236,6 +236,7 @@ ftps_normalize_pem_bundle() {
     done
 
     if [[ -z "${matching_certificate_index}" ]]; then
+        rm -f "${private_key_file}" "${certificate_prefix}".*
         ftps_warn "FTPS certificate content did not contain a certificate matching the supplied private key"
         exit 1
     fi
@@ -250,6 +251,8 @@ ftps_normalize_pem_bundle() {
 
         cat "${certificate_prefix}.${certificate_index}" >> "${destination_file}"
     done
+
+    rm -f "${private_key_file}" "${certificate_prefix}".*
 }
 
 ftps_write_pkcs12_bundle() {
@@ -260,20 +263,22 @@ ftps_write_pkcs12_bundle() {
 
     bundle_file="$(mktemp)"
     raw_pem_file="$(mktemp)"
-    trap 'rm -f "${bundle_file:-}" "${raw_pem_file:-}"' RETURN
 
     if ! printf '%s' "${encoded_bundle}" | base64 -d > "${bundle_file}" 2>/dev/null; then
+        rm -f "${bundle_file}" "${raw_pem_file}"
         ftps_warn "FTPS certificate value is not PEM and could not be base64-decoded as PKCS12"
         exit 1
     fi
 
     if ! openssl pkcs12 -in "${bundle_file}" -noenc -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" 2>/dev/null && \
        ! openssl pkcs12 -in "${bundle_file}" -nodes -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" 2>/dev/null; then
+        rm -f "${bundle_file}" "${raw_pem_file}"
         ftps_warn "FTPS certificate PKCS12 bundle could not be converted to PEM"
         exit 1
     fi
 
     ftps_normalize_pem_bundle "${raw_pem_file}" "${FTPS_CERTIFICATE_PATH}"
+    rm -f "${bundle_file}" "${raw_pem_file}"
 
     ftps_log "PKCS12 conversion completed and PEM bundle normalized"
 }
@@ -284,7 +289,7 @@ fi
 
 if [[ -n "${FTPS_CERTIFICATE_PEM}" && -n "${FTPS_CERTIFICATE_KEY_PEM}" && "${FTPS_CERTIFICATE_PEM}" != "${FTPS_CERTIFICATE_KEY_PEM}" ]]; then
     raw_pem_file="$(mktemp)"
-    trap 'rm -f "${raw_pem_file:-}"' RETURN
+    trap 'rm -f "${raw_pem_file}"' RETURN
 
     ftps_log "Using separate PEM certificate and private key environment variables"
     cat > "${raw_pem_file}" <<EOF
@@ -295,7 +300,7 @@ EOF
     FTPS_CERTIFICATE_MANAGED="true"
 elif [[ -n "${FTPS_CERTIFICATE_PEM}" ]]; then
     raw_pem_file="$(mktemp)"
-    trap 'rm -f "${raw_pem_file:-}"' RETURN
+    trap 'rm -f "${raw_pem_file}"' RETURN
 
     if [[ "${FTPS_CERTIFICATE_PEM}" == *"-----BEGIN "* ]]; then
         ftps_log "Using PEM certificate content from environment variable"

@@ -230,9 +230,17 @@ module "container_app" {
   }
 }
 
+resource "terraform_data" "ftps_container_app_id" {
+  input = module.container_app.container_app_ids["ftps-server"]
+}
+
 resource "azapi_update_resource" "ftps_passive_ports" {
   type        = "Microsoft.App/containerApps@2024-03-01"
   resource_id = module.container_app.container_app_ids["ftps-server"]
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.ftps_container_app_id]
+  }
 
   body = {
     properties = {

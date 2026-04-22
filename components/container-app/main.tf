@@ -86,9 +86,9 @@ locals {
     }
   ]
   ftps_passive_ports = [for port in range(var.ftps.passive_port_min, var.ftps.passive_port_max + 1) : {
-    port         = port
-    external     = true
-    exposed_port = port
+    exposedPort = port
+    external    = true
+    targetPort  = port
   }]
 }
 
@@ -217,17 +217,53 @@ module "container_app" {
         }
       }
 
-      min_replicas                     = 1
-      max_replicas                     = 1
-      ingress_enabled                  = true
-      ingress_external_enabled         = true
-      ingress_target_port              = var.ftps.listen_port
-      ingress_exposed_port             = var.ftps.listen_port
-      ingress_transport                = "tcp"
-      ingress_additional_port_mappings = local.ftps_passive_ports
-      registry_server                  = var.acr.login_server
-      registry_identity_id             = azurerm_user_assigned_identity.ftps_acr_pull.id
+      min_replicas             = 1
+      max_replicas             = 1
+      ingress_enabled          = true
+      ingress_external_enabled = true
+      ingress_target_port      = var.ftps.listen_port
+      ingress_transport        = "tcp"
+      registry_server          = var.acr.login_server
+      registry_identity_id     = azurerm_user_assigned_identity.ftps_acr_pull.id
 
+    }
+  }
+}
+
+resource "terraform_data" "ftps_container_app_id" {
+  input = module.container_app.container_app_ids["ftps-server"]
+}
+
+resource "azapi_update_resource" "ftps_passive_ports" {
+  type        = "Microsoft.App/containerApps@2024-03-01"
+  resource_id = module.container_app.container_app_ids["ftps-server"]
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.ftps_container_app_id]
+  }
+
+  body = {
+    properties = {
+      configuration = {
+        activeRevisionsMode = "Single"
+
+        registries = [
+          {
+            identity = azurerm_user_assigned_identity.ftps_acr_pull.id
+            server   = var.acr.login_server
+          }
+        ]
+
+        ingress = {
+          external               = true
+          exposedPort            = var.ftps.listen_port
+          targetPort             = var.ftps.listen_port
+          transport              = "Tcp"
+          additionalPortMappings = local.ftps_passive_ports
+        }
+
+        secrets = local.ftps_container_app_secrets
+      }
     }
   }
 }

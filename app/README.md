@@ -35,40 +35,57 @@ Run the disposable local smoke test from the `app` directory:
 make test
 ```
 
+Run a specific smoke case through the same make target:
+
+```bash
+make test TEST_ARGS="pem"
+make test TEST_ARGS="pkcs12-chain"
+```
+
 You can override the FTPS password if you want to exercise a specific value:
 
 ```bash
-FTPS_LOCAL_PASSWORD='localpass123!' ./test-local-ftps.sh
+FTPS_LOCAL_PASSWORD='localpass123!' make test
 ```
 
 What the test does:
 
 - builds the FTPS image locally
-- generates a throwaway self-signed certificate in a repo-local temporary directory for that run
-- starts the FTPS service and local SFTP sidecar from `docker-compose.yaml`
-- uploads a file over implicit FTPS on port `990`
+- runs the FTPS startup and forwarder smoke flow against two certificate inputs for the same image
+- covers a mounted combined PEM file and a base64 PKCS#12 bundle with key plus server certificate plus signing certificate
+- uploads a file over implicit FTPS on port `990` for each case
 - waits for the background forwarder to copy that file to the SFTP target
-- verifies the forwarded file contents match the uploaded payload
+- verifies the forwarded file contents match the uploaded payload for each case
+- asserts that the PKCS#12 case logs conversion and produces the expected PEM block markers inside the container
+
+The default PKCS#12 case is synthetic. If you want to reproduce a specific real-world bundle instead, point the chain case at your own local `.p12` file:
+
+```bash
+FTPS_TEST_PKCS12_CHAIN_BUNDLE_FILE="$PWD/live-kv-dtsft-demo-apps-hmcts-net-2026-04-22.p12" make test TEST_ARGS="pkcs12-chain"
+```
+
+That override bypasses the generated synthetic chain bundle and copies the provided file into the test case. The saved live bundle above is the current local repro fixture for the Key Vault failure shape.
 
 The script cleans up the test containers, volumes, temporary certificates, and uploaded test payload automatically on exit.
 
 If you need to inspect the smoke environment after the script finishes, preserve it explicitly for that run:
 
 ```bash
-FTPS_TEST_PRESERVE_STACK=true ./test-local-ftps.sh
+FTPS_TEST_PRESERVE_STACK=true make test
 ```
 
 When preserved, the script prints the compose project name and temporary directory instead of tearing them down. You can then inspect the sidecar and FTPS logs, for example:
 
 ```bash
-docker compose -p ftps-local-smoke -f docker-compose.yaml exec -T sftp-target ls -la /home/sftpuser/dropoff
-docker compose -p ftps-local-smoke -f docker-compose.yaml logs ftps
+docker compose -p ftps-local-smoke-pem -f docker-compose.yaml exec -T sftp-target ls -la /home/sftpuser/dropoff
+docker compose -p ftps-local-smoke-pkcs12-chain -f docker-compose.yaml logs ftps
 ```
 
 Clean up afterward with:
 
 ```bash
-docker compose -p ftps-local-smoke -f docker-compose.yaml down -v --remove-orphans
+docker compose -p ftps-local-smoke-pem -f docker-compose.yaml down -v --remove-orphans
+docker compose -p ftps-local-smoke-pkcs12-chain -f docker-compose.yaml down -v --remove-orphans
 ```
 
 ## Local Run

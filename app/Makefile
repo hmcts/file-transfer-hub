@@ -1,6 +1,7 @@
 COMPOSE_PROJECT_NAME ?= ftps-local
 COMPOSE_ARGS = -p $(COMPOSE_PROJECT_NAME) -f docker-compose.yaml
 ENV_TEMPLATE = .env.local.example
+TEST_ARGS ?=
 
 .PHONY: certs ensure-env up down test
 
@@ -34,4 +35,4 @@ down:
 	@docker compose $(COMPOSE_ARGS) down -v --remove-orphans
 
 test:
-	@./test-local-ftps.sh
+	@./test-local-ftps.sh $(TEST_ARGS)

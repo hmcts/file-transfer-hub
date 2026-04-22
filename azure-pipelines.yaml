@@ -150,6 +150,8 @@ stages:
                       "log_analytics_workspace_id=$(log_analytics_workspace_id)"
                       -var
                       "container_apps_subnet_id=$(container_apps_subnet_id)"
+                      -var
+                      "container_app_image=hmctsprod.azurecr.io/$(imageRepository):$(Build.BuildId)"
               - ${{ if eq(deployment.component, 'core') }}:
                   - task: AzureCLI@2
                     name: terraformOutputs

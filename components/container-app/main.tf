@@ -41,7 +41,7 @@ locals {
       key_vault_secret_name = "ho-moj-ftps-demo-password"
     }
   ]
-  ftps_storage_sftp_host        = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
+  ftps_storage_sftp_host = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
   ftps_key_vault_secrets = concat(
     [
       {
@@ -133,7 +133,7 @@ module "container_app" {
       key_vault_secrets     = local.ftps_key_vault_secrets
       containers = {
         ftps-server = {
-          image  = var.container_app.image
+          image  = coalesce(var.container_app_image, var.container_app.image)
           cpu    = var.container_app.cpu
           memory = var.container_app.memory
           env = concat(

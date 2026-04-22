@@ -267,7 +267,8 @@ ftps_write_pkcs12_bundle() {
         exit 1
     fi
 
-    if ! openssl pkcs12 -in "${bundle_file}" -nodes -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" >/dev/null 2>&1; then
+    if ! openssl pkcs12 -in "${bundle_file}" -noenc -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" 2>/dev/null && \
+       ! openssl pkcs12 -in "${bundle_file}" -nodes -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" 2>/dev/null; then
         ftps_warn "FTPS certificate PKCS12 bundle could not be converted to PEM"
         exit 1
     fi

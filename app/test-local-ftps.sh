@@ -345,6 +345,21 @@ assert_certificate_blocks() {
     fi
 }
 
+assert_presented_certificate_count() {
+    local expected_certificates="$1"
+    local actual_certificates
+
+    actual_certificates="$(echo | openssl s_client -connect 127.0.0.1:990 -showcerts 2>/dev/null | grep -c 'BEGIN CERTIFICATE')"
+
+    if [[ "${actual_certificates}" != "${expected_certificates}" ]]; then
+        echo "Presented FTPS certificate count did not match expected value" >&2
+        echo "Expected certificates: ${expected_certificates}" >&2
+        echo "Actual certificates:   ${actual_certificates}" >&2
+        echo | openssl s_client -connect 127.0.0.1:990 -showcerts 2>/dev/null >&2 || true
+        return 1
+    fi
+}
+
 run_smoke_case() {
     local case_name="$1"
     local case_dir="${TEMP_DIR}/${case_name}"
@@ -384,9 +399,11 @@ run_smoke_case() {
     case "${case_name}" in
         pem)
             assert_certificate_blocks 1 1 || return 1
+            assert_presented_certificate_count 1 || return 1
             ;;
         pkcs12-chain)
             assert_certificate_blocks 1 2 || return 1
+            assert_presented_certificate_count 2 || return 1
             ;;
     esac
 

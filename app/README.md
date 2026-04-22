@@ -142,7 +142,7 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 - `FTPS_LOCAL_PASSWORD`: FTPS login password
 - `FTPS_ADDITIONAL_USER`: Optional second FTPS login username
 - `FTPS_ADDITIONAL_PASSWORD`: Optional second FTPS login password
-- `FTPS_CERTIFICATE_PATH`: Path to a combined PEM file containing private key and certificate
+- `FTPS_CERTIFICATE_PATH`: Path to the source combined PEM bundle containing the private key, the leaf certificate, and any optional chain certificates
 - `FTPS_CERTIFICATE_PEM`: Certificate PEM content or a combined PEM bundle when injecting via secrets
 - `FTPS_CERTIFICATE_KEY_PEM`: Private key PEM content when injecting via secrets; optional when `FTPS_CERTIFICATE_PEM` already contains a combined PEM bundle
 - `FTPS_CERTIFICATE_PKCS12_PASSWORD`: Optional password for PKCS#12 bundles passed via `FTPS_CERTIFICATE_PEM`; defaults to empty
@@ -150,6 +150,8 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 When `FTPS_CERTIFICATE_PEM` does not contain PEM markers, the container treats it as a base64-encoded PKCS#12 bundle, converts it to PEM at startup, and rebuilds the bundle so the private key is paired with the matching leaf certificate before any chain certificates.
 
 When PEM content is injected directly, startup applies the same normalization and now fails early if the secret content does not include both a private key and a certificate that matches that key.
+
+After startup has a normalized PEM bundle, it derives a dedicated ProFTPD server certificate file and, when additional certificates are present, a certificate-chain file so FTPS clients receive the intermediate chain.
 - `FTPS_PASSIVE_MIN_PORT`: First passive FTPS data port
 - `FTPS_PASSIVE_MAX_PORT`: Last passive FTPS data port
 - `FTPS_ENABLE_STORAGE_FORWARD`: Enables the background SFTP forwarding loop

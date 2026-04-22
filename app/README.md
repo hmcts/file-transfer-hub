@@ -113,12 +113,19 @@ Useful local targets:
 - `make certs`: generate an idempotent self-signed cert set for local manual runs
 - `make ensure-env`: create `app/.env` from `app/.env.local.example` when it is missing
 - `make up`: generate certs if needed and start the local FTPS-plus-SFTP stack
+- `make connect`: open an interactive shell in the running local FTPS container created by `make up`
 - `make down`: stop and remove the local FTPS-plus-SFTP stack
 - `make test`: run the automated FTPS-to-SFTP smoke test with temporary certs and automatic cleanup
 
 The compose file mounts `./certs/ftps.pem` into the container and exposes the full FTPS passive range. The smoke test does not reuse this directory; it creates a temporary cert directory under `app/`, mounts that for the test run, and removes it on exit so manual cert files are left alone.
 
-Use `make up` when you want to inspect the local FTPS-to-SFTP forwarding stack interactively. Use `make test` when you want a repeatable pass/fail check after image changes.
+Use `make up` when you want to inspect the local FTPS-to-SFTP forwarding stack interactively. Use `make connect` to open a shell in the running FTPS container from that stack. Use `make test` when you want a repeatable pass/fail check after image changes.
+
+If no local FTPS container is running, `make connect` exits with:
+
+```text
+No container running, please run make up first.
+```
 
 For manual local runs, the default login is:
 

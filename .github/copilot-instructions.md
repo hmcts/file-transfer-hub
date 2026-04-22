@@ -9,7 +9,7 @@
 ## FTPS Image And Local Validation
 
 - Treat `app/` as the FTPS image source of truth.
-- Any change to the FTPS image runtime, startup, TLS handling, forwarding behavior, Dockerfile, or compose wiring must pass `app/test-local-ftps.sh` before the task is complete.
+- Any change to the FTPS image runtime, startup, TLS handling, forwarding behavior, Dockerfile, or compose wiring must pass `make test` in the `app/` folder before the task is complete.
 - Do not treat an image-only change as done based only on `docker build`; the FTPS startup and FTPS-to-SFTP forwarding smoke test must pass.
 - Leave the local smoke environment clean when you are done. If you ran the test manually or interrupted it during debugging, bring `ftps-local-smoke` down before considering the task finished.
 - Use `app/docker-compose.yaml` as the single local runtime for both manual FTPS-to-SFTP checks and the smoke test. Do not reintroduce a separate local test overlay unless there is a concrete need that cannot be handled in the base compose file.
@@ -51,5 +51,6 @@ For validating plan use (change env or component if needed):
 ## Documentation And Operational Notes
 
 - If an image change alters the local test workflow or runtime expectations, update `app/README.md` in the same change.
+- If a change adds, removes, renames, or changes the behavior of `app/Makefile` local workflow targets, update `app/README.md` in the same change.
 - If a change affects Key Vault secret requirements, environment behavior, or the nonprod forwarding model, update the root `README.md` in the same change.
 - If a change affects certificate names, DNS names, Key Vault ownership, or certificate renewal expectations, update `docs/certificates.md` in the same change.

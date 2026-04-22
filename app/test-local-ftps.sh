@@ -199,8 +199,10 @@ wait_for_ftps() {
     local attempt
     for attempt in $(seq 1 30); do
         if echo | openssl s_client -connect 127.0.0.1:990 -tls1_2 >/dev/null 2>&1; then
+            printf 'FTPS ready on 127.0.0.1:990 after %s attempt(s)\n' "${attempt}"
             return 0
         fi
+        printf 'Waiting for FTPS on 127.0.0.1:990 (%s/30)\n' "${attempt}"
         sleep 2
     done
 
@@ -213,8 +215,10 @@ wait_for_forwarded_file() {
     local attempt
     for attempt in $(seq 1 30); do
         if compose exec -T sftp-target sh -lc "test -f /home/sftpuser/dropoff/${TEST_FILENAME}"; then
+            printf 'Forwarded file detected after %s attempt(s)\n' "${attempt}"
             return 0
         fi
+        printf 'Waiting for forwarded file on SFTP target (%s/30)\n' "${attempt}"
         sleep 2
     done
 
@@ -366,7 +370,7 @@ run_smoke_case() {
 
     if [[ "${case_name}" == pkcs12-* ]]; then
         assert_container_logs_contain "Certificate content does not look like PEM; attempting PKCS12 conversion"
-        assert_container_logs_contain "PKCS12 conversion completed and PEM bundle written"
+        assert_container_logs_contain "PKCS12 conversion completed and PEM bundle normalized"
     fi
 
     case "${case_name}" in

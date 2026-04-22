@@ -9,12 +9,6 @@ data "azurerm_subnet" "ftps_private_endpoint" {
   resource_group_name  = "${local.name}-rg"
 }
 
-data "azurerm_private_dns_zone" "ftps_container_app_environment" {
-  provider            = azurerm.private_dns
-  name                = "privatelink.${replace(lower(var.location), " ", "")}.azurecontainerapps.io"
-  resource_group_name = "core-infra-intsvc-rg"
-}
-
 data "azurerm_key_vault_secret" "ftps" {
   for_each = {
     for secret in local.ftps_key_vault_secrets : secret.name => secret
@@ -292,10 +286,5 @@ resource "azurerm_private_endpoint" "ftps_container_app_environment" {
     private_connection_resource_id = module.container_app.container_app_environment_id
     is_manual_connection           = false
     subresource_names              = ["managedEnvironment"]
-  }
-
-  private_dns_zone_group {
-    name                 = "${var.product}-file-transfer-hub-private-dns-zone-group-${var.env}"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.ftps_container_app_environment.id]
   }
 }

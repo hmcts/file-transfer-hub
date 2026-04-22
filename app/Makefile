@@ -1,8 +1,9 @@
 COMPOSE_PROJECT_NAME ?= ftps-local
 COMPOSE_ARGS = -p $(COMPOSE_PROJECT_NAME) -f docker-compose.yaml
 ENV_TEMPLATE = .env.local.example
+TEST_ARGS ?=
 
-.PHONY: certs ensure-env up down test
+.PHONY: certs ensure-env up down test connect
 
 certs:
 	@mkdir -p certs
@@ -34,4 +35,12 @@ down:
 	@docker compose $(COMPOSE_ARGS) down -v --remove-orphans
 
 test:
-	@./test-local-ftps.sh
+	@./test-local-ftps.sh $(TEST_ARGS)
+
+connect:
+	@container_id="$$(docker compose $(COMPOSE_ARGS) ps -q ftps)"; \
+	if [ -z "$$container_id" ] || [ "$$(docker inspect -f '{{.State.Running}}' $$container_id 2>/dev/null)" != "true" ]; then \
+		echo "No container running, please run make up first."; \
+		exit 1; \
+	fi; \
+	docker exec -it "$$container_id" bash

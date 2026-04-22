@@ -61,10 +61,10 @@ What the test does:
 The default PKCS#12 case is synthetic. If you want to reproduce a specific real-world bundle instead, point the chain case at your own local `.p12` file:
 
 ```bash
-FTPS_TEST_PKCS12_CHAIN_BUNDLE_FILE="$PWD/live-kv-dtsft-demo-apps-hmcts-net-2026-04-22.p12" make test TEST_ARGS="pkcs12-chain"
+FTPS_TEST_PKCS12_CHAIN_BUNDLE_FILE="path/tp/real-world-cert-bundle.p12" make test TEST_ARGS="pkcs12-chain"
 ```
 
-That override bypasses the generated synthetic chain bundle and copies the provided file into the test case. The saved live bundle above is the current local repro fixture for the Key Vault failure shape.
+That override bypasses the generated synthetic chain bundle and copies the provided file into the test case.
 
 The script cleans up the test containers, volumes, temporary certificates, and uploaded test payload automatically on exit.
 

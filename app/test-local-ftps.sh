@@ -207,7 +207,11 @@ wait_for_ftps() {
     done
 
     echo "FTPS service did not become ready in time" >&2
+    print_blank_line >&2
+    echo "FTPS container log dump follows." >&2
+    echo "These logs are printed after the readiness timeout and may include multiple startup attempts if Docker restarted the container." >&2
     compose logs ftps >&2 || true
+    print_blank_line >&2
     return 1
 }
 
@@ -223,7 +227,11 @@ wait_for_forwarded_file() {
     done
 
     echo "Forwarded file did not appear on the SFTP target in time" >&2
+    print_blank_line >&2
+    echo "FTPS container log dump follows." >&2
+    echo "These logs are printed after the forwarding timeout and may include multiple startup attempts if Docker restarted the container." >&2
     compose logs ftps >&2 || true
+    print_blank_line >&2
     return 1
 }
 
@@ -352,10 +360,10 @@ run_smoke_case() {
 
     case "${case_name}" in
         pem)
-            prepare_pem_case "${case_dir}"
+            prepare_pem_case "${case_dir}" || return 1
             ;;
         pkcs12-chain)
-            prepare_pkcs12_chain_case "${case_dir}"
+            prepare_pkcs12_chain_case "${case_dir}" || return 1
             ;;
         *)
             echo "Unknown smoke test case: ${case_name}" >&2
@@ -364,21 +372,21 @@ run_smoke_case() {
     esac
 
     cleanup_known_smoke_projects
-    compose up -d --build
+    compose up -d --build || return 1
 
-    wait_for_ftps
+    wait_for_ftps || return 1
 
     if [[ "${case_name}" == pkcs12-* ]]; then
-        assert_container_logs_contain "Certificate content does not look like PEM; attempting PKCS12 conversion"
-        assert_container_logs_contain "PKCS12 conversion completed and PEM bundle normalized"
+        assert_container_logs_contain "Certificate content does not look like PEM; attempting PKCS12 conversion" || return 1
+        assert_container_logs_contain "PKCS12 conversion completed and PEM bundle normalized" || return 1
     fi
 
     case "${case_name}" in
         pem)
-            assert_certificate_blocks 1 1
+            assert_certificate_blocks 1 1 || return 1
             ;;
         pkcs12-chain)
-            assert_certificate_blocks 1 2
+            assert_certificate_blocks 1 2 || return 1
             ;;
     esac
 
@@ -387,9 +395,9 @@ run_smoke_case() {
         --user "ftpssvc:${FTPS_LOCAL_PASSWORD}" \
         --ftp-pasv \
         --upload-file "${UPLOAD_FILE}" \
-        "ftps://127.0.0.1:990/upload/${TEST_FILENAME}"
+        "ftps://127.0.0.1:990/upload/${TEST_FILENAME}" || return 1
 
-    wait_for_forwarded_file
+    wait_for_forwarded_file || return 1
 
     FORWARDED_PAYLOAD="$(compose exec -T sftp-target sh -lc "cat /home/sftpuser/dropoff/${TEST_FILENAME}")"
 

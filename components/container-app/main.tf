@@ -285,6 +285,6 @@ resource "azurerm_private_endpoint" "ftps_container_app_environment" {
     name                           = "${var.product}-file-transfer-hub-private-service-connection-${var.env}"
     private_connection_resource_id = module.container_app.container_app_environment_id
     is_manual_connection           = false
-    subresource_names              = ["managedEnvironment"]
+    subresource_names              = ["managedEnvironments"]
   }
 }

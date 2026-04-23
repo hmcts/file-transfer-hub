@@ -50,6 +50,7 @@ For validating plan use (change env or component if needed):
 
 ## Documentation And Operational Notes
 
+- After any change, verify that `app/README.md`, the root `README.md`, and `docs/certificates.md` do not contain claims that are now stale; update them in the same change if they do.
 - If an image change alters the local test workflow or runtime expectations, update `app/README.md` in the same change.
 - If a change adds, removes, renames, or changes the behavior of `app/Makefile` local workflow targets, update `app/README.md` in the same change.
 - If a change affects Key Vault secret requirements, environment behavior, or the nonprod forwarding model, update the root `README.md` in the same change.

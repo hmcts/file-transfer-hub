@@ -3,12 +3,6 @@ data "azurerm_key_vault" "this" {
   resource_group_name = "${local.name}-rg"
 }
 
-data "azurerm_subnet" "ftps_private_endpoint" {
-  name                 = "${var.product}-file-transfer-hub-general-${var.env}"
-  virtual_network_name = "${var.product}-file-transfer-hub-vnet-${var.env}"
-  resource_group_name  = "${local.name}-rg"
-}
-
 data "azurerm_key_vault_secret" "ftps" {
   for_each = {
     for secret in local.ftps_key_vault_secrets : secret.name => secret
@@ -91,6 +85,84 @@ locals {
       value = data.azurerm_key_vault_secret.ftps[secret.name].value
     }
   ]
+  ftps_container_env = concat(
+    [
+      {
+        name        = "FTPS_LOCAL_USER"
+        secret_name = var.ftps.local_user_secret_name
+      },
+      {
+        name        = "FTPS_LOCAL_PASSWORD"
+        secret_name = var.ftps.local_password_secret_name
+      },
+      {
+        name  = "FTPS_PUBLIC_IP"
+        value = var.ftps.public_endpoint
+      },
+      {
+        name  = "FTPS_LISTEN_PORT"
+        value = tostring(var.ftps.listen_port)
+      },
+      {
+        name  = "FTPS_PASSIVE_MIN_PORT"
+        value = tostring(var.ftps.passive_port_min)
+      },
+      {
+        name  = "FTPS_PASSIVE_MAX_PORT"
+        value = tostring(var.ftps.passive_port_max)
+      },
+      {
+        name        = "FTPS_CERTIFICATE_PEM"
+        secret_name = var.ftps.certificate_secret_name
+      },
+      {
+        name        = "FTPS_CERTIFICATE_KEY_PEM"
+        secret_name = var.ftps.certificate_key_secret_name
+      },
+      {
+        name  = "FTPS_ENABLE_STORAGE_FORWARD"
+        value = tostring(var.ftps.forward_enabled)
+      },
+      {
+        name  = "FTPS_FORWARD_INTERVAL_SECONDS"
+        value = tostring(var.ftps.forward_interval_seconds)
+      },
+      {
+        name  = "FTPS_FORWARD_DELETE_AFTER"
+        value = tostring(var.ftps.forward_delete_after)
+      },
+      {
+        name  = "FTPS_STORAGE_SFTP_HOST"
+        value = local.ftps_storage_sftp_host
+      },
+      {
+        name  = "FTPS_STORAGE_SFTP_PORT"
+        value = tostring(var.ftps.storage_sftp_port)
+      },
+      {
+        name        = "FTPS_STORAGE_SFTP_USERNAME"
+        secret_name = var.ftps.storage_sftp_user_secret_name
+      },
+      {
+        name        = "FTPS_STORAGE_SFTP_PASSWORD"
+        secret_name = var.ftps.storage_sftp_password_secret_name
+      },
+      {
+        name  = "FTPS_STORAGE_SFTP_REMOTE_DIR"
+        value = var.ftps.storage_sftp_remote_dir
+      },
+    ],
+    var.env != "nonprod" ? [] : [
+      {
+        name        = "FTPS_ADDITIONAL_USER"
+        secret_name = "ho-moj-ftps-demo-username"
+      },
+      {
+        name        = "FTPS_ADDITIONAL_PASSWORD"
+        secret_name = "ho-moj-ftps-demo-password"
+      }
+    ]
+  )
   ftps_passive_ports = [for port in range(var.ftps.passive_port_min, var.ftps.passive_port_max + 1) : {
     exposedPort = port
     external    = true
@@ -142,84 +214,7 @@ module "container_app" {
           image  = coalesce(var.container_app_image, var.container_app.image)
           cpu    = var.container_app.cpu
           memory = var.container_app.memory
-          env = concat(
-            [
-              {
-                name        = "FTPS_LOCAL_USER"
-                secret_name = var.ftps.local_user_secret_name
-              },
-              {
-                name        = "FTPS_LOCAL_PASSWORD"
-                secret_name = var.ftps.local_password_secret_name
-              },
-              {
-                name  = "FTPS_PUBLIC_IP"
-                value = var.ftps.public_endpoint
-              },
-              {
-                name  = "FTPS_LISTEN_PORT"
-                value = tostring(var.ftps.listen_port)
-              },
-              {
-                name  = "FTPS_PASSIVE_MIN_PORT"
-                value = tostring(var.ftps.passive_port_min)
-              },
-              {
-                name  = "FTPS_PASSIVE_MAX_PORT"
-                value = tostring(var.ftps.passive_port_max)
-              },
-              {
-                name        = "FTPS_CERTIFICATE_PEM"
-                secret_name = var.ftps.certificate_secret_name
-              },
-              {
-                name        = "FTPS_CERTIFICATE_KEY_PEM"
-                secret_name = var.ftps.certificate_key_secret_name
-              },
-              {
-                name  = "FTPS_ENABLE_STORAGE_FORWARD"
-                value = tostring(var.ftps.forward_enabled)
-              },
-              {
-                name  = "FTPS_FORWARD_INTERVAL_SECONDS"
-                value = tostring(var.ftps.forward_interval_seconds)
-              },
-              {
-                name  = "FTPS_FORWARD_DELETE_AFTER"
-                value = tostring(var.ftps.forward_delete_after)
-              },
-              {
-                name  = "FTPS_STORAGE_SFTP_HOST"
-                value = local.ftps_storage_sftp_host
-              },
-              {
-                name  = "FTPS_STORAGE_SFTP_PORT"
-                value = tostring(var.ftps.storage_sftp_port)
-              },
-              {
-                name        = "FTPS_STORAGE_SFTP_USERNAME"
-                secret_name = var.ftps.storage_sftp_user_secret_name
-              },
-              {
-                name        = "FTPS_STORAGE_SFTP_PASSWORD"
-                secret_name = var.ftps.storage_sftp_password_secret_name
-              },
-              {
-                name  = "FTPS_STORAGE_SFTP_REMOTE_DIR"
-                value = var.ftps.storage_sftp_remote_dir
-              },
-            ],
-            var.env != "nonprod" ? [] : [
-              {
-                name        = "FTPS_ADDITIONAL_USER"
-                secret_name = "ho-moj-ftps-demo-username"
-              },
-              {
-                name        = "FTPS_ADDITIONAL_PASSWORD"
-                secret_name = "ho-moj-ftps-demo-password"
-              }
-            ]
-          )
+          env    = local.ftps_container_env
         }
       }
 
@@ -240,12 +235,31 @@ resource "terraform_data" "ftps_container_app_id" {
   input = module.container_app.container_app_ids["ftps-server"]
 }
 
+resource "terraform_data" "ftps_passive_ports_configuration" {
+  input = {
+    container_app_id         = module.container_app.container_app_ids["ftps-server"]
+    image                    = coalesce(var.container_app_image, var.container_app.image)
+    listen_port              = var.ftps.listen_port
+    passive_ports            = local.ftps_passive_ports
+    registry_server          = var.acr.login_server
+    registry_identity_id     = azurerm_user_assigned_identity.ftps_acr_pull.id
+    container_app_secrets    = local.ftps_container_app_secrets
+    container_app_env        = local.ftps_container_env
+    ingress_external_enabled = true
+    ingress_target_port      = var.ftps.listen_port
+    ingress_transport        = "tcp"
+  }
+}
+
 resource "azapi_update_resource" "ftps_passive_ports" {
   type        = "Microsoft.App/containerApps@2024-03-01"
   resource_id = module.container_app.container_app_ids["ftps-server"]
 
   lifecycle {
-    replace_triggered_by = [terraform_data.ftps_container_app_id]
+    replace_triggered_by = [
+      terraform_data.ftps_container_app_id,
+      terraform_data.ftps_passive_ports_configuration,
+    ]
   }
 
   body = {
@@ -271,20 +285,5 @@ resource "azapi_update_resource" "ftps_passive_ports" {
         secrets = local.ftps_container_app_secrets
       }
     }
-  }
-}
-
-resource "azurerm_private_endpoint" "ftps_container_app_environment" {
-  name                = "${var.product}-file-transfer-hub-private-endpoint-${var.env}"
-  location            = var.location
-  resource_group_name = "${local.name}-rg"
-  subnet_id           = data.azurerm_subnet.ftps_private_endpoint.id
-  tags                = module.ctags.common_tags
-
-  private_service_connection {
-    name                           = "${var.product}-file-transfer-hub-private-service-connection-${var.env}"
-    private_connection_resource_id = module.container_app.container_app_environment_id
-    is_manual_connection           = false
-    subresource_names              = ["managedEnvironment"]
   }
 }

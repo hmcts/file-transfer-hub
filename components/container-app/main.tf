@@ -5,7 +5,7 @@ data "azurerm_key_vault" "this" {
 
 data "azurerm_key_vault_secret" "ftps" {
   for_each = {
-    for secret in local.ftps_key_vault_secrets : secret.name => secret
+    for secret in local.ftps_key_vault_secrets : "${secret.key_vault_id}|${secret.key_vault_secret_name}" => secret
   }
 
   key_vault_id = each.value.key_vault_id
@@ -41,8 +41,34 @@ locals {
       key_vault_secret_name = "ho-moj-ftps-demo-password"
     }
   ]
-  ftps_storage_sftp_host = var.ftps.storage_sftp_host != null ? var.ftps.storage_sftp_host : (var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : "")
-  ftps_key_vault_secrets = concat(
+  ftps_legacy_forward_target = {
+    name                 = "storage"
+    host                 = var.ftps.storage_sftp_host
+    port                 = var.ftps.storage_sftp_port
+    remote_dir           = var.ftps.storage_sftp_remote_dir
+    username_secret_name = var.ftps.storage_sftp_user_secret_name
+    password_secret_name = var.ftps.storage_sftp_password_secret_name
+    key_vault_id         = null
+  }
+  ftps_forward_targets = [
+    for index, target in (length(var.ftps.forward_targets) > 0 ? var.ftps.forward_targets : [local.ftps_legacy_forward_target]) : {
+      name = coalesce(try(target.name, null), "target-${index + 1}")
+      host = coalesce(
+        try(target.host, null),
+        index == 0 && var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : null
+      )
+      port                 = coalesce(try(target.port, null), 22)
+      remote_dir           = coalesce(try(target.remote_dir, null), ".")
+      username_secret_name = coalesce(try(target.username_secret_name, null), var.ftps.storage_sftp_user_secret_name)
+      password_secret_name = coalesce(try(target.password_secret_name, null), var.ftps.storage_sftp_password_secret_name)
+      key_vault_id         = coalesce(try(target.key_vault_id, null), data.azurerm_key_vault.this.id)
+    }
+    if coalesce(
+      try(target.host, null),
+      index == 0 && var.env != "prod" ? "${replace(local.name_short, "-", "")}stor.blob.core.windows.net" : null
+    ) != null
+  ]
+  ftps_key_vault_secrets = distinct(concat(
     [
       {
         name                  = var.ftps.local_user_secret_name
@@ -55,19 +81,23 @@ locals {
         key_vault_secret_name = var.ftps.local_password_secret_name
       },
       {
-        name                  = var.ftps.storage_sftp_user_secret_name
-        key_vault_id          = data.azurerm_key_vault.this.id
-        key_vault_secret_name = var.ftps.storage_sftp_user_secret_name
-      },
-      {
-        name                  = var.ftps.storage_sftp_password_secret_name
-        key_vault_id          = data.azurerm_key_vault.this.id
-        key_vault_secret_name = var.ftps.storage_sftp_password_secret_name
-      },
-      {
         name                  = var.ftps.certificate_secret_name
         key_vault_id          = local.ftps_certificate_key_vault_id
         key_vault_secret_name = var.ftps.certificate_secret_name
+      }
+    ],
+    [
+      for target in local.ftps_forward_targets : {
+        name                  = target.username_secret_name
+        key_vault_id          = target.key_vault_id
+        key_vault_secret_name = target.username_secret_name
+      }
+    ],
+    [
+      for target in local.ftps_forward_targets : {
+        name                  = target.password_secret_name
+        key_vault_id          = target.key_vault_id
+        key_vault_secret_name = target.password_secret_name
       }
     ],
     local.ftps_demo_user_secrets,
@@ -78,11 +108,11 @@ locals {
         key_vault_secret_name = var.ftps.certificate_key_secret_name
       }
     ]
-  )
+  ))
   ftps_container_app_secrets = [
     for secret in local.ftps_key_vault_secrets : {
       name  = secret.name
-      value = data.azurerm_key_vault_secret.ftps[secret.name].value
+      value = data.azurerm_key_vault_secret.ftps["${secret.key_vault_id}|${secret.key_vault_secret_name}"].value
     }
   ]
   ftps_container_env = concat(
@@ -132,26 +162,38 @@ locals {
         value = tostring(var.ftps.forward_delete_after)
       },
       {
-        name  = "FTPS_STORAGE_SFTP_HOST"
-        value = local.ftps_storage_sftp_host
-      },
-      {
-        name  = "FTPS_STORAGE_SFTP_PORT"
-        value = tostring(var.ftps.storage_sftp_port)
-      },
-      {
-        name        = "FTPS_STORAGE_SFTP_USERNAME"
-        secret_name = var.ftps.storage_sftp_user_secret_name
-      },
-      {
-        name        = "FTPS_STORAGE_SFTP_PASSWORD"
-        secret_name = var.ftps.storage_sftp_password_secret_name
-      },
-      {
-        name  = "FTPS_STORAGE_SFTP_REMOTE_DIR"
-        value = var.ftps.storage_sftp_remote_dir
+        name  = "FTPS_FORWARD_TARGET_COUNT"
+        value = tostring(length(local.ftps_forward_targets))
       },
     ],
+    flatten([
+      for index, target in local.ftps_forward_targets : [
+        {
+          name  = "FTPS_FORWARD_TARGET_${index}_NAME"
+          value = target.name
+        },
+        {
+          name  = "FTPS_FORWARD_TARGET_${index}_HOST"
+          value = target.host
+        },
+        {
+          name  = "FTPS_FORWARD_TARGET_${index}_PORT"
+          value = tostring(target.port)
+        },
+        {
+          name        = "FTPS_FORWARD_TARGET_${index}_USERNAME"
+          secret_name = target.username_secret_name
+        },
+        {
+          name        = "FTPS_FORWARD_TARGET_${index}_PASSWORD"
+          secret_name = target.password_secret_name
+        },
+        {
+          name  = "FTPS_FORWARD_TARGET_${index}_REMOTE_DIR"
+          value = target.remote_dir
+        }
+      ]
+    ]),
     var.env != "nonprod" ? [] : [
       {
         name        = "FTPS_ADDITIONAL_USER"

@@ -22,6 +22,7 @@ CERTS_DIR=""
 CURRENT_CERTIFICATE_PATH=""
 SELECTED_CASES=()
 CASE_RESULTS=()
+FORWARD_TARGET_SERVICES=(sftp-target sftp-target-2)
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
     COLOR_RED=$'\033[31m'
@@ -216,17 +217,20 @@ wait_for_ftps() {
 }
 
 wait_for_forwarded_file() {
+    local service_name="$1"
+    local remote_path="$2"
     local attempt
+
     for attempt in $(seq 1 30); do
-        if compose exec -T sftp-target sh -lc "test -f /home/sftpuser/dropoff/${TEST_FILENAME}"; then
-            printf 'Forwarded file detected after %s attempt(s)\n' "${attempt}"
+        if compose exec -T "${service_name}" sh -lc "test -f ${remote_path}"; then
+            printf 'Forwarded file detected on %s after %s attempt(s)\n' "${service_name}" "${attempt}"
             return 0
         fi
-        printf 'Waiting for forwarded file on SFTP target (%s/30)\n' "${attempt}"
+        printf 'Waiting for forwarded file on %s (%s/30)\n' "${service_name}" "${attempt}"
         sleep 2
     done
 
-    echo "Forwarded file did not appear on the SFTP target in time" >&2
+    echo "Forwarded file did not appear on ${service_name} in time" >&2
     print_blank_line >&2
     echo "FTPS container log dump follows." >&2
     echo "These logs are printed after the forwarding timeout and may include multiple startup attempts if Docker restarted the container." >&2
@@ -414,12 +418,22 @@ run_smoke_case() {
         --upload-file "${UPLOAD_FILE}" \
         "ftps://127.0.0.1:990/upload/${TEST_FILENAME}" || return 1
 
-    wait_for_forwarded_file || return 1
+    wait_for_forwarded_file sftp-target "/home/sftpuser/dropoff/${TEST_FILENAME}" || return 1
+    wait_for_forwarded_file sftp-target-2 "/home/sftpuser2/replica/${TEST_FILENAME}" || return 1
 
     FORWARDED_PAYLOAD="$(compose exec -T sftp-target sh -lc "cat /home/sftpuser/dropoff/${TEST_FILENAME}")"
 
     if [[ "${FORWARDED_PAYLOAD}" != "${TEST_PAYLOAD}" ]]; then
-        echo "Forwarded file contents do not match uploaded payload" >&2
+        echo "Forwarded file contents do not match uploaded payload on sftp-target" >&2
+        echo "Expected: ${TEST_PAYLOAD}" >&2
+        echo "Actual:   ${FORWARDED_PAYLOAD}" >&2
+        return 1
+    fi
+
+    FORWARDED_PAYLOAD="$(compose exec -T sftp-target-2 sh -lc "cat /home/sftpuser2/replica/${TEST_FILENAME}")"
+
+    if [[ "${FORWARDED_PAYLOAD}" != "${TEST_PAYLOAD}" ]]; then
+        echo "Forwarded file contents do not match uploaded payload on sftp-target-2" >&2
         echo "Expected: ${TEST_PAYLOAD}" >&2
         echo "Actual:   ${FORWARDED_PAYLOAD}" >&2
         return 1

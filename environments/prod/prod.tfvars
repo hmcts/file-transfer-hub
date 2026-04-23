@@ -11,6 +11,15 @@ hub = {
 }
 
 ftps = {
-  public_endpoint   = "dtsft.prod.apps.hmcts.net"
-  storage_sftp_host = "sftp-prod.example.invalid"
+  public_endpoint = "dtsft.prod.apps.hmcts.net"
+  forward_targets = [
+    {
+      name                 = "primary"
+      host                 = "sftp-prod.example.invalid"
+      port                 = 22
+      remote_dir           = "."
+      username_secret_name = "ftps-storage-sftp-username"
+      password_secret_name = "ftps-storage-sftp-password"
+    }
+  ]
 }

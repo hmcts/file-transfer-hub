@@ -167,7 +167,7 @@ locals {
       },
     ],
     flatten([
-      for index, target in local.ftps_forward_targets : [
+      for index, target in local.ftps_forward_targets : concat([
         {
           name  = "FTPS_FORWARD_TARGET_${index}_NAME"
           value = target.name
@@ -192,7 +192,12 @@ locals {
           name  = "FTPS_FORWARD_TARGET_${index}_REMOTE_DIR"
           value = target.remote_dir
         }
-      ]
+      ], target.host_secret_name != null ? [
+        {
+          name        = "FTPS_FORWARD_TARGET_${index}_HOST"
+          secret_name = target.host_secret_name
+        }
+      ] : [])
     ]),
     var.env != "nonprod" ? [] : [
       {

@@ -29,6 +29,7 @@ Forward targets are now configured from `environments/<env>/<env>.tfvars` under 
 
 - `name`: optional label used in runtime logs
 - `host`: target IP or DNS name
+- `host_secret_name`: Key Vault secret name containing the target IP or DNS name
 - `port`: SFTP port, default `22`
 - `remote_dir`: remote upload directory, default `.`
 - `username_secret_name`: Key Vault secret name for the SFTP username

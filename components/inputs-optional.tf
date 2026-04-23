@@ -39,16 +39,17 @@ variable "acr" {
 
 variable "ftps" {
   type = object({
-    certificate_common_name           = optional(string, "ftps.local")
-    certificate_key_vault_id          = optional(string)
-    certificate_key_secret_name       = optional(string, "ftps-certificate-key-pem")
-    certificate_secret_name           = optional(string, "ftps-certificate-pem")
-    forward_delete_after              = optional(bool, false)
-    forward_enabled                   = optional(bool, true)
-    forward_interval_seconds          = optional(number, 60)
+    certificate_common_name     = optional(string, "ftps.local")
+    certificate_key_vault_id    = optional(string)
+    certificate_key_secret_name = optional(string, "ftps-certificate-key-pem")
+    certificate_secret_name     = optional(string, "ftps-certificate-pem")
+    forward_delete_after        = optional(bool, false)
+    forward_enabled             = optional(bool, true)
+    forward_interval_seconds    = optional(number, 60)
     forward_targets = optional(list(object({
       name                 = optional(string)
       host                 = optional(string)
+      host_secret_name     = optional(string)
       port                 = optional(number, 22)
       remote_dir           = optional(string, ".")
       username_secret_name = optional(string, "ftps-storage-sftp-username")

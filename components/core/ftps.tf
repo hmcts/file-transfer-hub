@@ -5,7 +5,7 @@ locals {
   generated_forward_target = length(var.ftps.forward_targets) > 0 ? {
     username_secret_name = coalesce(try(var.ftps.forward_targets[0].username_secret_name, null), var.ftps.storage_sftp_user_secret_name)
     password_secret_name = coalesce(try(var.ftps.forward_targets[0].password_secret_name, null), var.ftps.storage_sftp_password_secret_name)
-  } : {
+    } : {
     username_secret_name = var.ftps.storage_sftp_user_secret_name
     password_secret_name = var.ftps.storage_sftp_password_secret_name
   }

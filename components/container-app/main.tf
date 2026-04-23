@@ -64,7 +64,7 @@ locals {
     }
     if try(target.host, null) != null || try(target.host_secret_name, null) != null || (index == 0 && var.env != "prod")
   ]
-  ftps_key_vault_secrets = distinct(concat(
+  ftps_key_vault_secret_refs = distinct(concat(
     [
       {
         name                  = var.ftps.local_user_secret_name
@@ -113,6 +113,14 @@ locals {
       }
     ]
   ))
+  ftps_key_vault_secrets = [
+    for index, secret in local.ftps_key_vault_secret_refs : merge(secret, {
+      name = "ftps-secret-${index}"
+    })
+  ]
+  ftps_container_app_secret_name_by_key = {
+    for secret in local.ftps_key_vault_secrets : "${secret.key_vault_id}|${secret.key_vault_secret_name}" => secret.name
+  }
   ftps_container_app_secrets = [
     for secret in local.ftps_key_vault_secrets : {
       name  = secret.name
@@ -123,11 +131,11 @@ locals {
     [
       {
         name        = "FTPS_LOCAL_USER"
-        secret_name = var.ftps.local_user_secret_name
+        secret_name = local.ftps_container_app_secret_name_by_key["${data.azurerm_key_vault.this.id}|${var.ftps.local_user_secret_name}"]
       },
       {
         name        = "FTPS_LOCAL_PASSWORD"
-        secret_name = var.ftps.local_password_secret_name
+        secret_name = local.ftps_container_app_secret_name_by_key["${data.azurerm_key_vault.this.id}|${var.ftps.local_password_secret_name}"]
       },
       {
         name  = "FTPS_PUBLIC_IP"
@@ -147,11 +155,11 @@ locals {
       },
       {
         name        = "FTPS_CERTIFICATE_PEM"
-        secret_name = var.ftps.certificate_secret_name
+        secret_name = local.ftps_container_app_secret_name_by_key["${local.ftps_certificate_key_vault_id}|${var.ftps.certificate_secret_name}"]
       },
       {
         name        = "FTPS_CERTIFICATE_KEY_PEM"
-        secret_name = var.ftps.certificate_key_secret_name
+        secret_name = local.ftps_container_app_secret_name_by_key["${local.ftps_certificate_key_vault_id}|${var.ftps.certificate_key_secret_name}"]
       },
       {
         name  = "FTPS_ENABLE_STORAGE_FORWARD"
@@ -182,11 +190,11 @@ locals {
         },
         {
           name        = "FTPS_FORWARD_TARGET_${index}_USERNAME"
-          secret_name = target.username_secret_name
+          secret_name = local.ftps_container_app_secret_name_by_key["${target.key_vault_id}|${target.username_secret_name}"]
         },
         {
           name        = "FTPS_FORWARD_TARGET_${index}_PASSWORD"
-          secret_name = target.password_secret_name
+          secret_name = local.ftps_container_app_secret_name_by_key["${target.key_vault_id}|${target.password_secret_name}"]
         },
         {
           name  = "FTPS_FORWARD_TARGET_${index}_REMOTE_DIR"
@@ -195,7 +203,7 @@ locals {
         ], target.host_secret_name != null ? [
         {
           name        = "FTPS_FORWARD_TARGET_${index}_HOST"
-          secret_name = target.host_secret_name
+          secret_name = local.ftps_container_app_secret_name_by_key["${target.key_vault_id}|${target.host_secret_name}"]
         }
         ] : target.host != null ? [
         {
@@ -207,11 +215,11 @@ locals {
     var.env != "nonprod" ? [] : [
       {
         name        = "FTPS_ADDITIONAL_USER"
-        secret_name = "ho-moj-ftps-demo-username"
+        secret_name = local.ftps_container_app_secret_name_by_key["${data.azurerm_key_vault.this.id}|ho-moj-ftps-demo-username"]
       },
       {
         name        = "FTPS_ADDITIONAL_PASSWORD"
-        secret_name = "ho-moj-ftps-demo-password"
+        secret_name = local.ftps_container_app_secret_name_by_key["${data.azurerm_key_vault.this.id}|ho-moj-ftps-demo-password"]
       }
     ]
   )

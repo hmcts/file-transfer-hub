@@ -17,6 +17,9 @@
 - Keep `app/Makefile` aligned with the documented local workflows. When changing the local run or test flow, update the relevant `make` targets in the same change.
 - Keep the manual local flow self-contained: `make up` should be able to bootstrap any minimal ignored local configuration it needs, while `app/test-local-ftps.sh` should remain deterministic and should not depend on user-specific local `.env` state.
 - Preserve the current implicit FTPS model on port `990`. If you change the passive FTPS port range or ingress behavior, update compose, Terraform, tests, and docs together.
+- All shell scripts in `app/` use `set -euo pipefail` and require `bash` (not `sh`). Follow this convention when adding or modifying scripts.
+- `test-local-ftps.sh` sets its own `FTPS_LOCAL_PASSWORD` per test case internally; any value the caller exports is intentionally overridden. Do not debug password mismatches by changing the caller's environment.
+- When adding a new runtime feature, configuration path, or entrypoint behavior, add test coverage to `test-local-ftps.sh` — either by extending an existing case with additional assertions or by adding a new named case when the feature requires distinct compose configuration. Do not rely solely on existing cases passing to validate new behavior.
 
 ## Terraform And Environment Expectations
 
@@ -50,6 +53,7 @@ For validating plan use (change env or component if needed):
 
 ## Documentation And Operational Notes
 
+- After any change, verify that `app/README.md`, the root `README.md`, and `docs/certificates.md` do not contain claims that are now stale; update them in the same change if they do.
 - If an image change alters the local test workflow or runtime expectations, update `app/README.md` in the same change.
 - If a change adds, removes, renames, or changes the behavior of `app/Makefile` local workflow targets, update `app/README.md` in the same change.
 - If a change affects Key Vault secret requirements, environment behavior, or the nonprod forwarding model, update the root `README.md` in the same change.

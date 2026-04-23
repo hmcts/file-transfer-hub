@@ -30,10 +30,15 @@
 - Nonprod currently uses the project storage account as a temporary SFTP forwarding target when `ftps.storage_sftp_host` is unset. Preserve that fallback unless you are intentionally changing the nonprod integration model.
 - Prod does not auto-create the FTPS runtime secrets. If you change secret names, secret requirements, or certificate inputs, keep the root README and deployment expectations accurate and do not assume Terraform will backfill prod secrets.
 - Be careful when reasoning about Key Vault access policy drift in `components/core`: plans can differ between a local user and the Azure DevOps principal because the policy includes `data.azurerm_client_config.current.object_id`.
+- For local Terraform validation, do not edit tracked Terraform files such as `provider.tf` to disable backends or otherwise work around local environment issues. If a temporary local-only workaround is unavoidable, use a copied file in a temporary location or a `.bak` restore pattern that is guaranteed to restore the tracked file before finishing.
+- Keep local Terraform scratch state out of the working tree when possible. If you use `TF_DATA_DIR` or any temporary init directory such as `.terraform_tmp`, remove it before finishing and before any commit or push.
+- If local `terraform plan` is blocked by missing Azure authentication, subscription context, or inaccessible remote resources, stop after the narrowest successful validation, report the exact blocker, and do not keep mutating repo files in an attempt to force the plan to run.
+- After any local Terraform validation flow that touches temporary files, explicitly verify workspace hygiene with `git status` and restore any tracked files before considering the task complete.
 
 # Terraform Plan Validation
 
 - Any change to Terraform files must be validated with `terraform plan` before the task is complete.
+- When a fully representative local `terraform plan` is not possible because required Azure credentials or target resources are unavailable, capture the closest successful local validation, state the blocker clearly, and prefer pipeline validation over risky local workarounds.
 
 For init use:
 ```
@@ -58,3 +63,8 @@ For validating plan use (change env or component if needed):
 - If a change adds, removes, renames, or changes the behavior of `app/Makefile` local workflow targets, update `app/README.md` in the same change.
 - If a change affects Key Vault secret requirements, environment behavior, or the nonprod forwarding model, update the root `README.md` in the same change.
 - If a change affects certificate names, DNS names, Key Vault ownership, or certificate renewal expectations, update `docs/certificates.md` in the same change.
+
+## Git Safety
+
+- Before any commit, push, rebase, cherry-pick, merge, or branch-management step, check `git status` for in-progress operations. If a cherry-pick, rebase, or merge is already active and the user did not explicitly ask to continue or abort it, stop and ask rather than guessing.
+- Do not leave behind Git sequencer state, temporary backup files, or validation artifacts when finishing a task.

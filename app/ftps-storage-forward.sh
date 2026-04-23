@@ -17,6 +17,26 @@ ftps_forward_log() {
   printf '[ftps-forward] %s\n' "$*" >&2
 }
 
+urlencode() {
+  local value="$1"
+  local length="${#value}"
+  local index character encoded=""
+
+  for (( index = 0; index < length; index++ )); do
+    character="${value:index:1}"
+    case "${character}" in
+      [a-zA-Z0-9.~_-])
+        encoded+="${character}"
+        ;;
+      *)
+        printf -v encoded '%s%%%02X' "${encoded}" "'${character}"
+        ;;
+    esac
+  done
+
+  printf '%s' "${encoded}"
+}
+
 declare -a target_names=()
 declare -a target_hosts=()
 declare -a target_ports=()
@@ -92,10 +112,14 @@ forward_to_target() {
   local password="$5"
   local remote_dir="$6"
   local remove_source_flag="$7"
+  local encoded_username encoded_password
 
   ftps_forward_log "Forwarding files to ${name} (${host}:${port})"
 
-  lftp -u "${username},${password}" "sftp://${host}:${port}" <<EOF
+  encoded_username="$(urlencode "${username}")"
+  encoded_password="$(urlencode "${password}")"
+
+  lftp "sftp://${encoded_username}:${encoded_password}@${host}:${port}" <<EOF
 set cmd:fail-exit yes
 set net:max-retries 2
 set net:reconnect-interval-base 5

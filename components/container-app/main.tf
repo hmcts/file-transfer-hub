@@ -214,7 +214,7 @@ module "container_app" {
           image  = coalesce(var.container_app_image, var.container_app.image)
           cpu    = var.container_app.cpu
           memory = var.container_app.memory
-          env = local.ftps_container_env
+          env    = local.ftps_container_env
         }
       }
 

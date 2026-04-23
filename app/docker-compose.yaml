@@ -68,8 +68,8 @@ services:
 
   sftp-target:
     image: atmoz/sftp:alpine
-    command: sftpuser:sftppass:1001::dropoff
+    command: ${SFTP_TARGET_0_USER:-sftpuser}:${SFTP_TARGET_0_PASSWORD:-sftppass}:1001::${SFTP_TARGET_0_REMOTE_DIR:-dropoff}
 
   sftp-target-2:
     image: atmoz/sftp:alpine
-    command: sftpuser2:sftppass2:1001::replica
+    command: ${SFTP_TARGET_1_USER:-sftpuser2}:${SFTP_TARGET_1_PASSWORD:-sftppass2}:1001::${SFTP_TARGET_1_REMOTE_DIR:-replica}

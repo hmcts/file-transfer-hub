@@ -6,10 +6,11 @@ COMPOSE_PROJECT_PREFIX="ftps-local-smoke"
 PRESERVE_STACK="${FTPS_TEST_PRESERVE_STACK:-false}"
 TEMP_DIR="$(mktemp -d "${SCRIPT_DIR}/.ftps-local-smoke.XXXXXX")"
 TEST_TIMESTAMP="$(date +%s)"
-ALL_CASES=(pem pkcs12-chain)
+ALL_CASES=(pem pem-special-target-password pkcs12-chain)
 KNOWN_COMPOSE_PROJECTS=(
     "${COMPOSE_PROJECT_PREFIX}"
     "${COMPOSE_PROJECT_PREFIX}-pem"
+    "${COMPOSE_PROJECT_PREFIX}-pem-special-target-password"
     "${COMPOSE_PROJECT_PREFIX}-pkcs12-chain"
 )
 
@@ -101,6 +102,7 @@ Usage: ./test-local-ftps.sh [case ...]
 
 Available cases:
   pem
+    pem-special-target-password
   pkcs12-chain
 
 Examples:
@@ -265,6 +267,13 @@ prepare_pem_case() {
     CURRENT_CERTIFICATE_PATH="/certs/ftps.pem"
 }
 
+prepare_pem_special_target_password_case() {
+    prepare_pem_case "$1"
+
+    export FTPS_FORWARD_TARGET_0_PASSWORD="sftp,pass"
+    export SFTP_TARGET_0_PASSWORD="sftp,pass"
+}
+
 prepare_pkcs12_chain_case() {
     local case_dir="$1"
     local bundle_file fixture_file
@@ -381,6 +390,9 @@ run_smoke_case() {
         pem)
             prepare_pem_case "${case_dir}" || return 1
             ;;
+        pem-special-target-password)
+            prepare_pem_special_target_password_case "${case_dir}" || return 1
+            ;;
         pkcs12-chain)
             prepare_pkcs12_chain_case "${case_dir}" || return 1
             ;;
@@ -401,7 +413,7 @@ run_smoke_case() {
     fi
 
     case "${case_name}" in
-        pem)
+        pem|pem-special-target-password)
             assert_certificate_blocks 1 1 || return 1
             assert_presented_certificate_count 1 || return 1
             ;;
@@ -454,6 +466,12 @@ parse_args "$@"
 
 export FTPS_LOCAL_PASSWORD="localpass123!"
 export FTPS_FORWARD_INTERVAL_SECONDS="${FTPS_FORWARD_INTERVAL_SECONDS:-2}"
+export SFTP_TARGET_0_USER="${SFTP_TARGET_0_USER:-sftpuser}"
+export SFTP_TARGET_0_PASSWORD="${SFTP_TARGET_0_PASSWORD:-sftppass}"
+export SFTP_TARGET_0_REMOTE_DIR="${SFTP_TARGET_0_REMOTE_DIR:-dropoff}"
+export SFTP_TARGET_1_USER="${SFTP_TARGET_1_USER:-sftpuser2}"
+export SFTP_TARGET_1_PASSWORD="${SFTP_TARGET_1_PASSWORD:-sftppass2}"
+export SFTP_TARGET_1_REMOTE_DIR="${SFTP_TARGET_1_REMOTE_DIR:-replica}"
 
 print_banner "FTPS local smoke test"
 printf 'Selected cases: %s\n' "${SELECTED_CASES[*]}"

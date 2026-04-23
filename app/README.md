@@ -1,6 +1,6 @@
 # FTPS Container
 
-This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to an SFTP target.
+This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to one or more SFTP targets.
 
 ## Runtime
 
@@ -8,7 +8,7 @@ This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to an
 - Passive FTPS ports: `1024-1034` by default for Azure Container Apps deployments
 - FTPS user credentials: provided at runtime
 - TLS certificate: provided at runtime as separate PEM secrets, a single combined PEM secret, a base64-encoded PKCS#12 bundle, or as a mounted combined PEM file
-- Forwarding target: SFTP username/password over `lftp mirror --reverse`
+- Forwarding targets: SFTP username/password over `lftp mirror --reverse`, with duplicate fan-out copies when multiple targets are configured
 - Forwarding host trust: the SFTP client currently uses `StrictHostKeyChecking=accept-new` so the first seen host key is accepted and then pinned for the life of that container filesystem
 
 The container image is built from:
@@ -53,8 +53,8 @@ What the test does:
 - runs the FTPS startup and forwarder smoke flow against two certificate inputs for the same image
 - covers a mounted combined PEM file and a base64 PKCS#12 bundle with key plus server certificate plus signing certificate
 - uploads a file over implicit FTPS on port `990` for each case
-- waits for the background forwarder to copy that file to the SFTP target
-- verifies the forwarded file contents match the uploaded payload for each case
+- waits for the background forwarder to copy that file to both local SFTP targets
+- verifies the forwarded file contents match the uploaded payload on both targets for each case
 - asserts that the PKCS#12 case logs conversion and produces the expected PEM block markers inside the container
 
 The default PKCS#12 case is synthetic. If you want to reproduce a specific real-world bundle instead, point the chain case at your own local `.p12` file:
@@ -89,7 +89,7 @@ docker compose -p ftps-local-smoke-pkcs12-chain -f docker-compose.yaml down -v -
 
 ## Local Run
 
-The default local compose stack is disposable and includes both the FTPS container and a local SFTP sidecar. Uploaded files and ProFTPD logs live on `tmpfs`, so they disappear when the stack stops.
+The default local compose stack is disposable and includes the FTPS container plus two local SFTP sidecars so duplicate forwarding can be exercised. Uploaded files and ProFTPD logs live on `tmpfs`, so they disappear when the stack stops.
 
 Generate local certs once and start the stack:
 
@@ -111,14 +111,14 @@ Useful local targets:
 
 - `make certs`: generate an idempotent self-signed cert set for local manual runs
 - `make ensure-env`: create `app/.env` from `app/.env.local.example` when it is missing
-- `make up`: generate certs if needed and start the local FTPS-plus-SFTP stack
+- `make up`: generate certs if needed and start the local FTPS-plus-SFTP-targets stack
 - `make connect`: open an interactive shell in the running local FTPS container created by `make up`
-- `make down`: stop and remove the local FTPS-plus-SFTP stack
+- `make down`: stop and remove the local FTPS-plus-SFTP-targets stack
 - `make test`: run the automated FTPS-to-SFTP smoke test with temporary certs and automatic cleanup
 
 The compose file mounts `./certs/ftps.pem` into the container and exposes the full FTPS passive range. The smoke test does not reuse this directory; it creates a temporary cert directory under `app/`, mounts that for the test run, and removes it on exit so manual cert files are left alone.
 
-Use `make up` when you want to inspect the local FTPS-to-SFTP forwarding stack interactively. Use `make connect` to open a shell in the running FTPS container from that stack. Use `make test` when you want a repeatable pass/fail check after image changes.
+Use `make up` when you want to inspect the local FTPS-to-SFTP forwarding stack interactively. Use `make connect` to open a shell in the running FTPS container from that stack. Use `make test` when you want a repeatable pass/fail check after image changes, including fan-out copies to both local targets.
 
 If no local FTPS container is running, `make connect` exits with:
 
@@ -156,16 +156,20 @@ After startup has a normalized PEM bundle, it derives a dedicated ProFTPD server
 - `FTPS_ENABLE_STORAGE_FORWARD`: Enables the background SFTP forwarding loop
 - `FTPS_FORWARD_INTERVAL_SECONDS`: Poll interval for forwarding uploads
 - `FTPS_FORWARD_DELETE_AFTER`: Removes local files after a successful forward when `true`
-- `FTPS_STORAGE_SFTP_HOST`: Destination SFTP host
-- `FTPS_STORAGE_SFTP_PORT`: Destination SFTP port
-- `FTPS_STORAGE_SFTP_USERNAME`: Destination SFTP username
-- `FTPS_STORAGE_SFTP_PASSWORD`: Destination SFTP password
-- `FTPS_STORAGE_SFTP_REMOTE_DIR`: Destination directory on the SFTP server
+- `FTPS_FORWARD_TARGET_COUNT`: Number of indexed forwarding targets to process
+- `FTPS_FORWARD_TARGET_<n>_NAME`: Optional label for target `n`
+- `FTPS_FORWARD_TARGET_<n>_HOST`: Destination SFTP host for target `n`
+- `FTPS_FORWARD_TARGET_<n>_PORT`: Destination SFTP port for target `n`
+- `FTPS_FORWARD_TARGET_<n>_USERNAME`: Destination SFTP username for target `n`
+- `FTPS_FORWARD_TARGET_<n>_PASSWORD`: Destination SFTP password for target `n`
+- `FTPS_FORWARD_TARGET_<n>_REMOTE_DIR`: Destination directory on the SFTP server for target `n`
+
+If `FTPS_FORWARD_TARGET_COUNT` is unset, the container falls back to the legacy single-target variables `FTPS_STORAGE_SFTP_HOST`, `FTPS_STORAGE_SFTP_PORT`, `FTPS_STORAGE_SFTP_USERNAME`, `FTPS_STORAGE_SFTP_PASSWORD`, and `FTPS_STORAGE_SFTP_REMOTE_DIR`.
 
 Current temporary SFTP trust behavior:
 
 - the forwarding client uses `ssh -o StrictHostKeyChecking=accept-new` underneath `lftp`
-- this allows first-connect host key bootstrap for the configured SFTP target
+- this allows first-connect host key bootstrap for each configured SFTP target
 - later connections still verify the previously accepted key while the container filesystem persists
 - this is a temporary runtime compromise; explicit host-key pinning is the intended long-term behavior
 
@@ -174,4 +178,4 @@ Current temporary SFTP trust behavior:
 - Container Apps must expose TCP ingress on `990`.
 - Azure Container Apps in this target environment allow at most `5` additional TCP port mappings per app, but the current default passive FTPS range is `1024-1034` (11 ports).
 - `FTPS_PUBLIC_IP` must be set to the address that FTPS clients can actually reach.
-- Nonprod forwarding is designed to target the project storage account over Azure Storage SFTP until the real downstream SFTP endpoint exists.
+- Nonprod forwarding is designed to target the project storage account over Azure Storage SFTP as the first forward target until the real downstream SFTP endpoints exist.

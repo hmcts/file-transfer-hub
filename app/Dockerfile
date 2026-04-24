@@ -13,6 +13,7 @@ RUN apt-get update \
     procps \
     proftpd-core \
     proftpd-mod-crypto \
+    socat \
     && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

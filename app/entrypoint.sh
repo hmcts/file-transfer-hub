@@ -429,4 +429,5 @@ else
 fi
 
 ftps_log "Launching ProFTPD"
+socat TCP4-LISTEN:8086,fork,reuseaddr /dev/null &
 exec /usr/sbin/proftpd -n -c /etc/proftpd/proftpd.conf

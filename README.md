@@ -43,3 +43,10 @@ To use a certificate from a different Key Vault (for example, Acmebot), set `ftp
 ## Current Nonprod Test Approach
 
 Until the real downstream SFTP server is available, nonprod uses the project storage account as the first temporary SFTP forward target.
+
+## Documentation
+
+- [FTPS Container — local build, smoke test, and environment variables](app/README.md)
+- [File Handling — upload flow, forwarding loop, deduplication, and ephemeral storage risk](docs/FileHandling.md)
+- [Certificates — Let's Encrypt renewal and per-environment Key Vault references](docs/certificates.md)
+- [Troubleshooting — BAU log access, KQL queries, and common issues](docs/Troubleshooting.md)

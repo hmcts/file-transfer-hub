@@ -4,6 +4,12 @@ variable "location" {
   default     = "uksouth"
 }
 
+variable "subscription_id" {
+  type        = string
+  description = "Azure subscription ID for the default azurerm provider."
+  default     = null
+}
+
 variable "storage_replication_type" {
   description = "The replication type for the Storage Account"
   type        = string

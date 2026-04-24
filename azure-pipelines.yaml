@@ -171,6 +171,103 @@ stages:
 
                         LOG_ANALYTICS_ID=$(terraform output -raw log_analytics_workspace_id)
                         SUBNET_ID=$(terraform output -raw container_apps_subnet_id)
+                        KEY_VAULT_NAME=$(terraform output -raw key_vault_name)
 
                         echo "##vso[task.setvariable variable=log_analytics_workspace_id;isOutput=true]$LOG_ANALYTICS_ID"
                         echo "##vso[task.setvariable variable=container_apps_subnet_id;isOutput=true]$SUBNET_ID"
+                        echo "##vso[task.setvariable variable=key_vault_name;isOutput=true]$KEY_VAULT_NAME"
+
+              - ${{ if eq(deployment.component, 'container-app') }}:
+                  - task: AzureCLI@2
+                    name: terraformOutputs
+                    displayName: "Capture Terraform Outputs"
+                    inputs:
+                      azureSubscription: ${{ deployment.service_connection }}
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      addSpnToEnvironment: true
+                      inlineScript: |
+                        cd $(System.DefaultWorkingDirectory)/file-transfer-hub/components/container-app
+
+                        export ARM_CLIENT_ID=$servicePrincipalId
+                        export ARM_CLIENT_SECRET=$servicePrincipalKey
+                        export ARM_TENANT_ID=$tenantId
+                        export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                        FTPS_CONTAINER_APP_FQDN=$(terraform output -raw ftps_container_app_fqdn)
+                        FTPS_CONTAINER_APP_ID=$(terraform output -raw ftps_container_app_id)
+
+                        echo "##vso[task.setvariable variable=ftps_container_app_fqdn;isOutput=true]$FTPS_CONTAINER_APP_FQDN"
+                        echo "##vso[task.setvariable variable=ftps_container_app_id;isOutput=true]$FTPS_CONTAINER_APP_ID"
+
+  - stage: nonprod_ftps_smoke
+    displayName: "Nonprod FTPS Smoke"
+    dependsOn:
+      - nonprod_core
+      - nonprod_container_app
+    condition: and(succeeded(), eq('${{ parameters.overrideAction }}', 'apply'))
+    variables:
+      - name: key_vault_name
+        value: $[
+          stageDependencies.nonprod_core.TerraformPlanApply.outputs['terraformOutputs.key_vault_name']
+          ]
+      - name: ftps_container_app_fqdn
+        value: $[
+          stageDependencies.nonprod_container_app.TerraformPlanApply.outputs['terraformOutputs.ftps_container_app_fqdn']
+          ]
+      - name: ftps_container_app_id
+        value: $[
+          stageDependencies.nonprod_container_app.TerraformPlanApply.outputs['terraformOutputs.ftps_container_app_id']
+          ]
+    jobs:
+      - job: AdvisorySmokeTest
+        displayName: "Advisory FTPS Smoke Test"
+        pool: hmcts-cftptl-agent-pool
+        timeoutInMinutes: 15
+        steps:
+          - task: AzureCLI@2
+            displayName: "Run FTPS smoke test"
+            continueOnError: true
+            inputs:
+              azureSubscription: HMCTS-HUB-NONPROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                bash "$(System.DefaultWorkingDirectory)/file-transfer-hub/scripts/ftps-smoke-test.sh"
+            env:
+              FTPS_SMOKE_FQDN: $(ftps_container_app_fqdn)
+              FTPS_SMOKE_CONTAINER_APP_ID: $(ftps_container_app_id)
+              FTPS_SMOKE_KEY_VAULT_NAME: $(key_vault_name)
+
+#  - stage: prod_ftps_smoke
+#    displayName: "Prod FTPS Smoke"
+#    dependsOn:
+#      - prod_core
+#      - prod_container_app
+#    condition: and(succeeded(), eq('${{ parameters.overrideAction }}', 'apply'))
+#    variables:
+#      - name: key_vault_name
+#        value: $[ stageDependencies.prod_core.TerraformPlanApply.outputs['terraformOutputs.key_vault_name'] ]
+#      - name: ftps_container_app_fqdn
+#        value: $[ stageDependencies.prod_container_app.TerraformPlanApply.outputs['terraformOutputs.ftps_container_app_fqdn'] ]
+#      - name: ftps_container_app_id
+#        value: $[ stageDependencies.prod_container_app.TerraformPlanApply.outputs['terraformOutputs.ftps_container_app_id'] ]
+#    jobs:
+#      - job: AdvisorySmokeTest
+#        displayName: "Advisory FTPS Smoke Test"
+#        pool: hmcts-cftptl-agent-pool
+#        timeoutInMinutes: 15
+#        steps:
+#          - task: AzureCLI@2
+#            displayName: "Run FTPS smoke test"
+#            continueOnError: true
+#            inputs:
+#              azureSubscription: HMCTS-HUB-PROD-INTSVC
+#              scriptType: bash
+#              scriptLocation: inlineScript
+#              inlineScript: |
+#                bash "$(System.DefaultWorkingDirectory)/file-transfer-hub/scripts/ftps-smoke-test.sh"
+#            env:
+#              FTPS_SMOKE_FQDN: $(ftps_container_app_fqdn)
+#              FTPS_SMOKE_CONTAINER_APP_ID: $(ftps_container_app_id)
+#              FTPS_SMOKE_KEY_VAULT_NAME: $(key_vault_name)

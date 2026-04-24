@@ -6,6 +6,13 @@
 - Treat `app/` as the FTPS image source of truth, `components/core` as the shared Azure infrastructure layer, `components/container-app` as the FTPS Azure Container Apps deployment layer, `environments/` as the per-environment override source, and `docs/` as the operational reference.
 - Prefer putting environment-specific behavior in `environments/*.tfvars` or existing Terraform inputs rather than hardcoding nonprod or prod branches into scripts or app code.
 
+## Maintainability
+
+- Write code that is maintainable, human-readable, and easy to reason about.
+- Apply practical Clean Code principles where they fit the language: clear naming, small focused functions or units, straightforward control flow, and explicit error handling and intent.
+- Optimize for maintainability over cleverness. Avoid dense one-liners, hidden side effects, and unnecessary indirection.
+- Write code so that another engineer can understand the intent quickly and change it safely.
+
 ## FTPS Image And Local Validation
 
 - Treat `app/` as the FTPS image source of truth.

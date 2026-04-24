@@ -364,8 +364,8 @@ resource "azapi_update_resource" "ftps_passive_ports" {
             probes = [
               {
                 type = "Liveness"
-                exec = {
-                  command = ["pgrep", "-x", "proftpd"]
+                tcpSocket = {
+                  port = 8086
                 }
                 initialDelaySeconds = 15
                 periodSeconds       = 30
@@ -375,8 +375,8 @@ resource "azapi_update_resource" "ftps_passive_ports" {
               },
               {
                 type = "Readiness"
-                exec = {
-                  command = ["pgrep", "-x", "proftpd"]
+                tcpSocket = {
+                  port = 8086
                 }
                 initialDelaySeconds = 10
                 periodSeconds       = 10

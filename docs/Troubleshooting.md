@@ -79,6 +79,17 @@ ContainerAppConsoleLogs_CL
 | order by TimeGenerated desc
 ```
 
+#### File transfer activity (what was sent and when)
+
+```kql
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(24h)
+| where ContainerAppName_s == "hub-fth"
+| where Log_s has "[ftps-forward]" and (Log_s has "Transferred:" or Log_s has "completed successfully" or Log_s has "failed")
+| project TimeGenerated, Log_s
+| order by TimeGenerated desc
+```
+
 #### Container startup logs (useful after a restart)
 
 ```kql
@@ -131,20 +142,50 @@ env | grep FTPS_FORWARD
 
 ### Files not reaching the SFTP target
 
-1. Check the forwarding logs using the **Forwarding errors** KQL query above.
-2. Look for `lftp` connection errors such as `Connection refused`, `Network unreachable`, or `Login failed`. These indicate a network or credential issue with the SFTP target.
+1. Check the forwarding logs using the **Forwarding errors** KQL query above. Since lftp output is now captured and emitted via `[ftps-forward]`, connection errors, login failures, and per-file transfer lines all appear in the log stream. Look for lines prefixed with the target name, e.g. `[ftps-forward] BAIS: Login failed`.
+2. Common `lftp` error patterns to look for:
+   - `Login failed` or `Authentication failed` — wrong credentials in Key Vault
+   - `Connection refused` / `Network unreachable` / `connect: Connection timed out` — network routing or firewall issue
+   - `no matching host key type found` — the target SFTP server uses `ssh-rsa` keys; verify `HostKeyAlgorithms=+ssh-rsa` is present in the `sftp:connect-program` setting
 3. Verify the SFTP target credentials in Key Vault `file-tran-hub-<env>-kv`. The relevant secrets are named according to `username_secret_name` and `password_secret_name` in `environments/<env>/<env>.tfvars`.
 4. Check that the Container App environment has network line-of-sight to the SFTP target. This is a private network so routing must be in place via the hub.
+5. If logs show `[ftps-forward] Forwarding to <target> completed successfully` but no `Transferred:` lines, the files were skipped by `--only-newer` (they already exist at the destination) or the upload directory was empty.
 
 ### Files stuck in the upload directory
 
-If `FTPS_FORWARD_DELETE_AFTER` is `false` (the default), files accumulate in the upload directory and are re-evaluated on every poll cycle. This is expected.
+If `FTPS_FORWARD_DELETE_AFTER` is `true` (the recommended setting for all environments), files are deleted from the upload directory as soon as the last SFTP target confirms receipt. Files should not accumulate.
+
+If `FTPS_FORWARD_DELETE_AFTER` is `false`, files remain in the upload directory indefinitely and are re-evaluated on every poll cycle. This is expected behaviour but risks duplicate uploads (see below).
 
 If you suspect a file should have been forwarded but was not:
 
-1. Check forwarding logs for the time the file was expected to be transferred.
+1. Check forwarding logs for the time the file was expected to be transferred. Look for `[ftps-forward] Forwarding to <target> completed successfully` or `[ftps-forward] Forwarding to <target> failed`.
 2. Confirm the forwarding loop is running — you should see `[ftps-forward] Forwarding files to <target>` in the logs approximately every 60 seconds.
 3. If the forwarding loop has stopped or the container has crashed, check the **Container restart / system events** KQL query.
+
+### Duplicate files appearing at the SFTP target
+
+This occurs when `FTPS_FORWARD_DELETE_AFTER=false` and the receiving system moves or removes files from its SFTP inbox after processing. Once the file is gone from the destination, `lftp`'s `--only-newer` check has nothing to compare against and re-uploads on the next poll cycle.
+
+**Fix:** ensure `forward_delete_after = true` is set in `environments/<env>/<env>.tfvars`. This is the recommended setting for all environments and causes `lftp` to delete the local source file immediately after successful delivery, making re-upload impossible.
+
+To stop an in-progress duplicate situation immediately without waiting for a deployment:
+
+```bash
+# Confirm which files are in the upload directory
+az containerapp exec \
+  --name hub-fth-ftps-server-<env> \
+  --resource-group file-transfer-hub-<env>-rg \
+  --command "find /srv/ftps/ftpssvc/upload -type f"
+
+# Remove a specific file once you have confirmed it has been received by the target
+az containerapp exec \
+  --name hub-fth-ftps-server-<env> \
+  --resource-group file-transfer-hub-<env>-rg \
+  --command "rm /srv/ftps/ftpssvc/upload/<filename>"
+```
+
+> Note: `az containerapp exec` may route to a different replica each time. Run `find` first to confirm the file exists in the replica you are connected to before attempting to remove it.
 
 ### Container not starting (startup failure)
 

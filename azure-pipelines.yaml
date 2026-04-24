@@ -205,7 +205,7 @@ stages:
     dependsOn:
       - nonprod_core
       - nonprod_container_app
-    condition: and(succeeded(), eq('${{ parameters.overrideAction }}', 'apply'))
+    condition: and(succeeded(), eq('${{ parameters.overrideAction }}', 'plan'))
     variables:
       - name: key_vault_name
         value: $[

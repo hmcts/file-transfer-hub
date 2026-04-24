@@ -86,6 +86,8 @@ The SFTP connection is made over SSH with `StrictHostKeyChecking=accept-new` (tr
 
 Usernames and passwords containing special characters are percent-encoded before being embedded in the SFTP URI.
 
+All `lftp` output (including per-file transfer lines from `xfer:log` and any error messages) is captured and emitted to stderr via the `[ftps-forward]` log prefix, so it appears in the Container App log stream and Log Analytics alongside the other forwarding activity.
+
 ### 5. Source file deletion
 
 Source file deletion is controlled by `FTPS_FORWARD_DELETE_AFTER` (default: `false`).
@@ -99,15 +101,18 @@ If the `lftp` call for the last target fails, `--Remove-source-files` is never e
 
 ## Deduplication and idempotency
 
-The only mechanism preventing a file from being sent more than once is `lftp`'s `--only-newer` flag, which compares file modification timestamps against the live destination at transfer time.
+The primary mechanism preventing a file from being sent more than once is `FTPS_FORWARD_DELETE_AFTER=true`: once `lftp` confirms the last target has received the file it passes `--Remove-source-files`, which deletes the local copy immediately. The file cannot be re-sent because it no longer exists locally.
+
+When `FTPS_FORWARD_DELETE_AFTER=false`, the only guard is `lftp`'s `--only-newer` flag, which compares file modification timestamps against whatever the destination currently holds. This is unreliable if the receiving system moves or deletes files from its SFTP inbox after processing — as soon as the file disappears from the destination the next poll cycle will re-upload it.
 
 | Scenario | Outcome |
 |---|---|
-| Normal: destination file exists with same or newer mtime | Skipped — not retransferred |
-| Destination file deleted or replaced | File will be retransferred on next poll |
-| Container restarted with `FTPS_FORWARD_DELETE_AFTER=false` | Local files gone; no re-send risk but unforwarded uploads are **lost** |
+| Normal (`delete_after=true`): transfer succeeds | Local file deleted immediately — no re-send possible |
+| `delete_after=true`, last target fails | Source file kept; full retry on next cycle including all targets |
+| `delete_after=false`: destination file exists with same or newer mtime | Skipped — not retransferred |
+| `delete_after=false`: destination moves/deletes the file after processing | **File will be re-uploaded on next poll** |
+| Container restarted with `delete_after=false` | Local files gone; no re-send risk but unforwarded uploads are **lost** |
 | Forward loop fails mid-run (multiple targets) | Targets after the failure are skipped that cycle; retried from the beginning next interval |
-| `FTPS_FORWARD_DELETE_AFTER=true`, last target fails | Source file is kept; full retry on next cycle including all targets |
 
 There is no content-hash tracking, no persistent sent ledger, and no distributed lock on source files during transfer.
 
@@ -128,5 +133,5 @@ To mitigate this, mount a persistent Azure File Share at `FTPS_LOCAL_UPLOAD_DIR`
 | `FTPS_ENABLE_STORAGE_FORWARD` | `true` | Enable/disable the forwarding loop |
 | `FTPS_FORWARD_INTERVAL_SECONDS` | `60` | Seconds to sleep between forwarding runs |
 | `FTPS_FORWARD_LOCAL_DIR` | `${FTPS_LOCAL_UPLOAD_DIR}` | Local directory scanned for files to forward |
-| `FTPS_FORWARD_DELETE_AFTER` | `false` | Delete source files after successful transfer to the last target |
+| `FTPS_FORWARD_DELETE_AFTER` | `false` | Delete source files after successful transfer to the last target. Set to `true` in all environments to prevent duplicate uploads. |
 | `FTPS_FORWARD_TARGET_COUNT` | _(unset)_ | Number of numbered SFTP targets; falls back to single-target mode if unset or 0 |

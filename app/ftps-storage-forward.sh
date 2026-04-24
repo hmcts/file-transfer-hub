@@ -119,16 +119,34 @@ forward_to_target() {
   encoded_username="$(urlencode "${username}")"
   encoded_password="$(urlencode "${password}")"
 
-  lftp "sftp://${encoded_username}:${encoded_password}@${host}:${port}" <<EOF
+  local lftp_output
+  if lftp_output="$(lftp "sftp://${encoded_username}:${encoded_password}@${host}:${port}" 2>&1 <<EOF
 set cmd:fail-exit yes
 set net:max-retries 2
 set net:reconnect-interval-base 5
 set net:timeout 20
 set sftp:auto-confirm yes
+set xfer:log yes
 set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=accept-new -o HostKeyAlgorithms=+ssh-rsa"
 mirror --reverse --continue --only-newer --parallel=1 ${remove_source_flag} "${FTPS_FORWARD_LOCAL_DIR}" "${remote_dir}"
 bye
 EOF
+)"; then
+    if [[ -n "${lftp_output}" ]]; then
+      while IFS= read -r line; do
+        ftps_forward_log "${name}: ${line}"
+      done <<< "${lftp_output}"
+    fi
+    ftps_forward_log "Forwarding to ${name} completed successfully"
+  else
+    if [[ -n "${lftp_output}" ]]; then
+      while IFS= read -r line; do
+        ftps_forward_log "${name}: ${line}"
+      done <<< "${lftp_output}"
+    fi
+    ftps_forward_log "Forwarding to ${name} failed"
+    return 1
+  fi
 }
 
 discover_targets

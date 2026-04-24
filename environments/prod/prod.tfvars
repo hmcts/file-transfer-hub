@@ -11,7 +11,8 @@ hub = {
 }
 
 ftps = {
-  public_endpoint = "dtsft.prod.apps.hmcts.net"
+  public_endpoint      = "dtsft.prod.apps.hmcts.net"
+  forward_delete_after = true
   forward_targets = [
     {
       name                 = "primary"

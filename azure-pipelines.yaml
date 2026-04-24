@@ -162,7 +162,7 @@ stages:
                       scriptLocation: inlineScript
                       addSpnToEnvironment: true
                       inlineScript: |
-                        cd $(System.DefaultWorkingDirectory)/file-transfer-hub/components/core
+                        cd $(System.DefaultWorkingDirectory)/components/core
 
                         export ARM_CLIENT_ID=$servicePrincipalId
                         export ARM_CLIENT_SECRET=$servicePrincipalKey
@@ -187,7 +187,7 @@ stages:
                       scriptLocation: inlineScript
                       addSpnToEnvironment: true
                       inlineScript: |
-                        cd $(System.DefaultWorkingDirectory)/file-transfer-hub/components/container-app
+                        cd $(System.DefaultWorkingDirectory)/components/container-app
 
                         export ARM_CLIENT_ID=$servicePrincipalId
                         export ARM_CLIENT_SECRET=$servicePrincipalKey
@@ -233,7 +233,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                cd "$(System.DefaultWorkingDirectory)/file-transfer-hub/scripts/ftps_smoke"
+                cd "$(System.DefaultWorkingDirectory)/scripts/ftps_smoke"
 
                 python3 -m venv .venv
                 source .venv/bin/activate
@@ -286,7 +286,7 @@ stages:
 #              scriptType: bash
 #              scriptLocation: inlineScript
 #              inlineScript: |
-#                cd "$(System.DefaultWorkingDirectory)/file-transfer-hub/scripts/ftps_smoke"
+#                cd "$(System.DefaultWorkingDirectory)/scripts/ftps_smoke"
 #
 #                python3 -m venv .venv
 #                source .venv/bin/activate

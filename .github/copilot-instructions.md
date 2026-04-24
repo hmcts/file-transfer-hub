@@ -47,14 +47,14 @@
 - Any change to Terraform files must be validated with `terraform plan` before the task is complete.
 - When a fully representative local `terraform plan` is not possible because required Azure credentials or target resources are unavailable, capture the closest successful local validation, state the blocker clearly, and prefer pipeline validation over risky local workarounds.
 
-For init use:
+For Terraform init use:
 ```
 -backend-config=storage_account_name=cfb084706949aac66ba5csa -backend-config=container_name=subscription-tfstate -backend-config='key=UK South/hub/file-transfer-hub/nonprod/core/terraform.tfstate' -backend-config=resource_group_name=azure-control-stg-rg -backend-config=subscription_id=04d27a32-7a07-48b3-95b8-3c8691e1a263
 ```
 
-For validating plan use (change env or component if needed):
+For running Terraform plan use (change/adjust env file path as needed):
 ```
--var env=nonprod -var builtFrom=hmcts/file-transfer-hub -var product=hub -var-file /azp/_work/1/s/file-transfer-hub/environments/nonprod/nonprod.tfvars -lock=false -detailed-exitcode
+plan -var env=nonprod -var builtFrom=hmcts/file-transfer-hub -var product=hub -var-file environments/nonprod/nonprod.tfvars -lock=false -detailed-exitcode -var subscription_id=fb084706-583f-4c9a-bdab-949aac66ba5c
 ```
 
 ## Pipeline And Image Promotion

@@ -109,3 +109,7 @@ Thumbs.db
 *~
 .vscode/
 .idea/
+
+# ── Python smoke test runtime ──────────────────────────────────
+**/.pytest_cache/
+scripts/ftps_smoke/.venv/

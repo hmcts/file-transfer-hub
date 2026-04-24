@@ -226,18 +226,38 @@ stages:
         timeoutInMinutes: 15
         steps:
           - task: AzureCLI@2
-            displayName: "Run FTPS smoke test"
+            displayName: "Run FTPS smoke tests"
             continueOnError: true
             inputs:
               azureSubscription: HMCTS-HUB-NONPROD-INTSVC
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                bash "$(System.DefaultWorkingDirectory)/file-transfer-hub/scripts/ftps-smoke-test.sh"
+                cd "$(System.DefaultWorkingDirectory)/file-transfer-hub/scripts/ftps_smoke"
+
+                python3 -m venv .venv
+                source .venv/bin/activate
+
+                python -m pip install --upgrade pip
+                python -m pip install -r requirements.txt
+
+                mkdir -p "$(Common.TestResultsDirectory)"
+
+                pytest -v -rA -s \
+                  --junitxml "$(Common.TestResultsDirectory)/ftps-smoke.xml"
             env:
               FTPS_SMOKE_FQDN: $(ftps_container_app_fqdn)
               FTPS_SMOKE_CONTAINER_APP_ID: $(ftps_container_app_id)
               FTPS_SMOKE_KEY_VAULT_NAME: $(key_vault_name)
+          - task: PublishTestResults@2
+            displayName: "Publish FTPS smoke test results"
+            condition: always()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: "$(Common.TestResultsDirectory)/ftps-smoke.xml"
+              testRunTitle: "Nonprod FTPS smoke"
+              failTaskOnFailedTests: false
+              publishRunAttachments: true
 
 #  - stage: prod_ftps_smoke
 #    displayName: "Prod FTPS Smoke"
@@ -259,15 +279,35 @@ stages:
 #        timeoutInMinutes: 15
 #        steps:
 #          - task: AzureCLI@2
-#            displayName: "Run FTPS smoke test"
+#            displayName: "Run FTPS smoke tests"
 #            continueOnError: true
 #            inputs:
 #              azureSubscription: HMCTS-HUB-PROD-INTSVC
 #              scriptType: bash
 #              scriptLocation: inlineScript
 #              inlineScript: |
-#                bash "$(System.DefaultWorkingDirectory)/file-transfer-hub/scripts/ftps-smoke-test.sh"
+#                cd "$(System.DefaultWorkingDirectory)/file-transfer-hub/scripts/ftps_smoke"
+#
+#                python3 -m venv .venv
+#                source .venv/bin/activate
+#
+#                python -m pip install --upgrade pip
+#                python -m pip install -r requirements.txt
+#
+#                mkdir -p "$(Common.TestResultsDirectory)"
+#
+#                pytest -v -rA -s \
+#                  --junitxml "$(Common.TestResultsDirectory)/ftps-smoke.xml"
 #            env:
 #              FTPS_SMOKE_FQDN: $(ftps_container_app_fqdn)
 #              FTPS_SMOKE_CONTAINER_APP_ID: $(ftps_container_app_id)
 #              FTPS_SMOKE_KEY_VAULT_NAME: $(key_vault_name)
+#          - task: PublishTestResults@2
+#            displayName: "Publish FTPS smoke test results"
+#            condition: always()
+#            inputs:
+#              testResultsFormat: JUnit
+#              testResultsFiles: "$(Common.TestResultsDirectory)/ftps-smoke.xml"
+#              testRunTitle: "Prod FTPS smoke"
+#              failTaskOnFailedTests: false
+#              publishRunAttachments: true

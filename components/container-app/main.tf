@@ -230,7 +230,7 @@ locals {
   }]
   ftps_container_api_env = [
     for e in local.ftps_container_env :
-    e.value != null
+    try(e.value, null) != null
     ? { name = e.name, value = e.value }
     : { name = e.name, secretRef = e.secret_name }
   ]

@@ -202,12 +202,8 @@ stages:
 
   - stage: nonprod_ftps_smoke
     displayName: "Nonprod FTPS Smoke"
-    dependsOn:
-      - nonprod_core
-      - nonprod_container_app
-    condition: and(in(dependencies.nonprod_core.result, 'Succeeded', 'Skipped'),
-      in(dependencies.nonprod_container_app.result, 'Succeeded', 'Skipped'),
-      eq('${{ parameters.overrideAction }}', 'plan'))
+    dependsOn: []
+    condition: eq('${{ parameters.overrideAction }}', 'plan')
     jobs:
       - job: AdvisorySmokeTest
         displayName: "Advisory FTPS Smoke Test"

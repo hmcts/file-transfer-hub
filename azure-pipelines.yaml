@@ -205,9 +205,20 @@ stages:
     dependsOn:
       - nonprod_core
       - nonprod_container_app
-    condition: and(in(dependencies.nonprod_core.result, 'Succeeded', 'Skipped'),
-      in(dependencies.nonprod_container_app.result, 'Succeeded', 'Skipped'),
-      eq('${{ parameters.overrideAction }}', 'plan'))
+    condition: and(succeeded(), eq('${{ parameters.overrideAction }}', 'plan'))
+    variables:
+      - name: key_vault_name
+        value: $[
+          stageDependencies.nonprod_core.TerraformPlanApply.outputs['terraformOutputs.key_vault_name']
+          ]
+      - name: ftps_container_app_fqdn
+        value: $[
+          stageDependencies.nonprod_container_app.TerraformPlanApply.outputs['terraformOutputs.ftps_container_app_fqdn']
+          ]
+      - name: ftps_container_app_id
+        value: $[
+          stageDependencies.nonprod_container_app.TerraformPlanApply.outputs['terraformOutputs.ftps_container_app_id']
+          ]
     jobs:
       - job: AdvisorySmokeTest
         displayName: "Advisory FTPS Smoke Test"
@@ -221,46 +232,7 @@ stages:
               azureSubscription: HMCTS-HUB-NONPROD-INTSVC
               scriptType: bash
               scriptLocation: inlineScript
-              addSpnToEnvironment: true
               inlineScript: |
-                set -euo pipefail
-
-                readonly TF_BACKEND_STORAGE_ACCOUNT="cfb084706949aac66ba5csa"
-                readonly TF_BACKEND_CONTAINER="subscription-tfstate"
-                readonly TF_BACKEND_RESOURCE_GROUP="azure-control-stg-rg"
-                readonly TF_BACKEND_SUBSCRIPTION="04d27a32-7a07-48b3-95b8-3c8691e1a263"
-                readonly TF_CORE_STATE_KEY="UK South/hub/file-transfer-hub/nonprod/core/terraform.tfstate"
-                readonly TF_CONTAINER_APP_STATE_KEY="UK South/hub/file-transfer-hub/nonprod/container-app/terraform.tfstate"
-                readonly TF_CORE_DIR="$(System.DefaultWorkingDirectory)/components/core"
-                readonly TF_CONTAINER_APP_DIR="$(System.DefaultWorkingDirectory)/components/container-app"
-
-                export ARM_CLIENT_ID="$servicePrincipalId"
-                export ARM_CLIENT_SECRET="$servicePrincipalKey"
-                export ARM_TENANT_ID="$tenantId"
-                export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
-
-                init_remote_state() {
-                  local component_dir="$1"
-                  local state_key="$2"
-
-                  terraform -chdir="$component_dir" init \
-                    -input=false \
-                    -reconfigure \
-                    -backend-config="storage_account_name=${TF_BACKEND_STORAGE_ACCOUNT}" \
-                    -backend-config="container_name=${TF_BACKEND_CONTAINER}" \
-                    -backend-config="resource_group_name=${TF_BACKEND_RESOURCE_GROUP}" \
-                    -backend-config="subscription_id=${TF_BACKEND_SUBSCRIPTION}" \
-                    -backend-config="key=${state_key}" \
-                    >/dev/null
-                }
-
-                init_remote_state "$TF_CORE_DIR" "$TF_CORE_STATE_KEY"
-                init_remote_state "$TF_CONTAINER_APP_DIR" "$TF_CONTAINER_APP_STATE_KEY"
-
-                export FTPS_SMOKE_KEY_VAULT_NAME="$(terraform -chdir="$TF_CORE_DIR" output -raw key_vault_name)"
-                export FTPS_SMOKE_FQDN="$(terraform -chdir="$TF_CONTAINER_APP_DIR" output -raw ftps_container_app_fqdn)"
-                export FTPS_SMOKE_CONTAINER_APP_ID="$(terraform -chdir="$TF_CONTAINER_APP_DIR" output -raw ftps_container_app_id)"
-
                 cd "$(System.DefaultWorkingDirectory)/scripts/ftps_smoke"
 
                 python3 -m venv .venv
@@ -273,6 +245,10 @@ stages:
 
                 pytest -v -rA -s \
                   --junitxml "$(Common.TestResultsDirectory)/ftps-smoke.xml"
+            env:
+              FTPS_SMOKE_FQDN: $(ftps_container_app_fqdn)
+              FTPS_SMOKE_CONTAINER_APP_ID: $(ftps_container_app_id)
+              FTPS_SMOKE_KEY_VAULT_NAME: $(key_vault_name)
           - task: PublishTestResults@2
             displayName: "Publish FTPS smoke test results"
             condition: always()

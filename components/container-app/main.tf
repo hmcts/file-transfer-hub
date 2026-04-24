@@ -228,6 +228,12 @@ locals {
     external    = true
     targetPort  = port
   }]
+  ftps_container_api_env = [
+    for e in local.ftps_container_env :
+    try(e.value, null) != null
+    ? { name = e.name, value = e.value }
+    : { name = e.name, secretRef = e.secret_name }
+  ]
 }
 
 module "container_app" {
@@ -343,6 +349,44 @@ resource "azapi_update_resource" "ftps_passive_ports" {
         }
 
         secrets = local.ftps_container_app_secrets
+      }
+
+      template = {
+        containers = [
+          {
+            name  = "ftps-server"
+            image = coalesce(var.container_app_image, var.container_app.image)
+            resources = {
+              cpu    = var.container_app.cpu
+              memory = var.container_app.memory
+            }
+            env = local.ftps_container_api_env
+            probes = [
+              {
+                type = "Liveness"
+                exec = {
+                  command = ["pgrep", "-x", "proftpd"]
+                }
+                initialDelaySeconds = 15
+                periodSeconds       = 30
+                failureThreshold    = 3
+                successThreshold    = 1
+                timeoutSeconds      = 5
+              },
+              {
+                type = "Readiness"
+                exec = {
+                  command = ["pgrep", "-x", "proftpd"]
+                }
+                initialDelaySeconds = 10
+                periodSeconds       = 10
+                failureThreshold    = 3
+                successThreshold    = 1
+                timeoutSeconds      = 5
+              }
+            ]
+          }
+        ]
       }
     }
   }

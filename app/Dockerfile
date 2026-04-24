@@ -10,6 +10,7 @@ RUN apt-get update \
     lftp \
     openssh-client \
     openssl \
+    procps \
     proftpd-core \
     proftpd-mod-crypto \
     && rm -rf /var/lib/apt/lists/*

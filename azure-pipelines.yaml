@@ -162,7 +162,16 @@ stages:
                       scriptLocation: inlineScript
                       addSpnToEnvironment: true
                       inlineScript: |
-                        cd $(System.DefaultWorkingDirectory)/components/core
+                        set -euo pipefail
+
+                        WORKDIR="$(System.DefaultWorkingDirectory)"
+                        if [ -d "$WORKDIR/file-transfer-hub" ]; then
+                          REPO_ROOT="$WORKDIR/file-transfer-hub"
+                        else
+                          REPO_ROOT="$WORKDIR"
+                        fi
+
+                        cd "$REPO_ROOT/components/core"
 
                         export ARM_CLIENT_ID=$servicePrincipalId
                         export ARM_CLIENT_SECRET=$servicePrincipalKey
@@ -172,6 +181,21 @@ stages:
                         LOG_ANALYTICS_ID=$(terraform output -raw log_analytics_workspace_id)
                         SUBNET_ID=$(terraform output -raw container_apps_subnet_id)
                         KEY_VAULT_NAME=$(terraform output -raw key_vault_name)
+
+                        case "$LOG_ANALYTICS_ID" in
+                          /subscriptions/*) ;;
+                          *) echo "Unexpected log_analytics_workspace_id output: $LOG_ANALYTICS_ID" >&2; exit 1 ;;
+                        esac
+
+                        case "$SUBNET_ID" in
+                          /subscriptions/*) ;;
+                          *) echo "Unexpected container_apps_subnet_id output: $SUBNET_ID" >&2; exit 1 ;;
+                        esac
+
+                        if [ -z "$KEY_VAULT_NAME" ]; then
+                          echo "key_vault_name output is empty" >&2
+                          exit 1
+                        fi
 
                         echo "##vso[task.setvariable variable=log_analytics_workspace_id;isOutput=true]$LOG_ANALYTICS_ID"
                         echo "##vso[task.setvariable variable=container_apps_subnet_id;isOutput=true]$SUBNET_ID"
@@ -187,7 +211,16 @@ stages:
                       scriptLocation: inlineScript
                       addSpnToEnvironment: true
                       inlineScript: |
-                        cd $(System.DefaultWorkingDirectory)/components/container-app
+                        set -euo pipefail
+
+                        WORKDIR="$(System.DefaultWorkingDirectory)"
+                        if [ -d "$WORKDIR/file-transfer-hub" ]; then
+                          REPO_ROOT="$WORKDIR/file-transfer-hub"
+                        else
+                          REPO_ROOT="$WORKDIR"
+                        fi
+
+                        cd "$REPO_ROOT/components/container-app"
 
                         export ARM_CLIENT_ID=$servicePrincipalId
                         export ARM_CLIENT_SECRET=$servicePrincipalKey
@@ -196,6 +229,16 @@ stages:
 
                         FTPS_CONTAINER_APP_FQDN=$(terraform output -raw ftps_container_app_fqdn)
                         FTPS_CONTAINER_APP_ID=$(terraform output -raw ftps_container_app_id)
+
+                        if [ -z "$FTPS_CONTAINER_APP_FQDN" ]; then
+                          echo "ftps_container_app_fqdn output is empty" >&2
+                          exit 1
+                        fi
+
+                        case "$FTPS_CONTAINER_APP_ID" in
+                          /subscriptions/*) ;;
+                          *) echo "Unexpected ftps_container_app_id output: $FTPS_CONTAINER_APP_ID" >&2; exit 1 ;;
+                        esac
 
                         echo "##vso[task.setvariable variable=ftps_container_app_fqdn;isOutput=true]$FTPS_CONTAINER_APP_FQDN"
                         echo "##vso[task.setvariable variable=ftps_container_app_id;isOutput=true]$FTPS_CONTAINER_APP_ID"
@@ -233,7 +276,16 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                cd "$(System.DefaultWorkingDirectory)/scripts/ftps_smoke"
+                set -euo pipefail
+
+                WORKDIR="$(System.DefaultWorkingDirectory)"
+                if [ -d "$WORKDIR/file-transfer-hub" ]; then
+                  REPO_ROOT="$WORKDIR/file-transfer-hub"
+                else
+                  REPO_ROOT="$WORKDIR"
+                fi
+
+                cd "$REPO_ROOT/scripts/ftps_smoke"
 
                 python3 -m venv .venv
                 source .venv/bin/activate
@@ -286,7 +338,16 @@ stages:
 #              scriptType: bash
 #              scriptLocation: inlineScript
 #              inlineScript: |
-#                cd "$(System.DefaultWorkingDirectory)/scripts/ftps_smoke"
+#                set -euo pipefail
+#
+#                WORKDIR="$(System.DefaultWorkingDirectory)"
+#                if [ -d "$WORKDIR/file-transfer-hub" ]; then
+#                  REPO_ROOT="$WORKDIR/file-transfer-hub"
+#                else
+#                  REPO_ROOT="$WORKDIR"
+#                fi
+#
+#                cd "$REPO_ROOT/scripts/ftps_smoke"
 #
 #                python3 -m venv .venv
 #                source .venv/bin/activate

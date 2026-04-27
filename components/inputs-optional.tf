@@ -16,6 +16,16 @@ variable "storage_account_kind" {
   default     = "StorageV2"
 }
 
+variable "storage" {
+  description = "Object describing configuration around"
+  type = object({
+    replication_type  = optional(string, "LRS")
+    account_kind      = optional(string, "StorageV2")
+    retention_period  = optional(number, 7)
+    delete_after_days = optional(number, 30)
+  })
+}
+
 variable "container_app" {
   type = object({
     image                 = optional(string, "hmctsprod.azurecr.io/file-transfer-hub/ftps-server:main")

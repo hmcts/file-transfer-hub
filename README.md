@@ -8,6 +8,22 @@ This repository contains the Terraform and application code for the FTPS-based f
 - `components/container-app` manages the Azure Container Apps runtime for the FTPS service.
 - `app` contains the ProFTPD-based FTPS container and the `lftp` forwarding logic.
 
+## Local Quality Checks
+
+- `make check`: runs `make format`, `make lint`, and `make validate` in that order as the default repo-level local quality gate.
+- `make format`: formats the tracked shell scripts in `app/` and runs `terraform fmt -recursive` across `components/` and `environments/`.
+- `make lint`: runs `shellcheck` for the tracked shell scripts in `app/` and checks Terraform formatting drift with `terraform fmt -check -diff -recursive` across `components/` and `environments/`.
+- `make validate`: runs Bash syntax validation in `app/` and performs `terraform init -backend=false` plus `terraform validate` for `components/core` and `components/container-app`.
+
+The Terraform steps in these root targets run through the local `tf` Docker container with `mise exec -- terraform`, which matches the repository's supported local Terraform workflow.
+
+The files under `environments/` are covered by Terraform formatting and format-check targets because `terraform fmt` also handles `.tfvars` files. Semantic environment validation still belongs in a `terraform plan` workflow rather than `terraform validate` alone.
+
+## Coding Standards
+
+- Shell scripts are formatted with `shfmt`, linted with `shellcheck`, and syntax-checked with `bash -n`.
+- Terraform code is checked with `terraform fmt` and `terraform validate` through the repository Make targets.
+
 ## Key Vault Secrets
 
 The FTPS runtime expects these Key Vault secrets to exist:

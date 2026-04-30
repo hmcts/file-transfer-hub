@@ -10,19 +10,22 @@
 
 - Write code that is maintainable, human-readable, and easy to reason about.
 - Apply practical Clean Code principles where they fit the language: clear naming, small focused functions or units, straightforward control flow, and explicit error handling and intent.
+- Prefer single-purpose scripts, modules, and functions. Keep responsibilities narrow and avoid combining unrelated behavior in one unit when a smaller focused abstraction would be clearer.
 - Avoid dense one-liners, hidden side effects, and unnecessary indirection.
 
 ## Shell Script Standards
 
-- Write shell scripts so they are `shfmt`-clean, `shellcheck`-clean, and valid under the repository shell syntax validation step.
-- Follow the repository shell formatting conventions and shared editor configuration.
+- Write shell scripts so they are `shfmt`-clean and `shellcheck`-clean.
+- Keep shell formatting aligned with the repository `.editorconfig` configuration.
 - Shell scripts in this repository use `bash` with `set -euo pipefail`. Use that standard consistently in new or modified scripts.
 
 ## Terraform Standards
 
-- Write Terraform so it is `terraform fmt`-clean and `terraform validate`-clean by default rather than relying on follow-up fixes.
+- Write Terraform so it is `terraform fmt`-clean and `terraform validate`-clean.
 - Keep Terraform module contracts aligned when changing inputs, outputs, or shared variables.
-- Prefer existing input variables and environment configuration files over hardcoded environment-specific logic.
+- Prefer input variables and environment configuration files over hardcoded environment-specific logic.
+- Follow the existing Terraform module, variable, and environment configuration patterns already used in the repository.
+- Do not modify tracked Terraform files solely to work around local validation or backend issues.
 
 ## Local Quality Gates
 
@@ -32,11 +35,10 @@
 
 ## Documentation And Operational Notes
 
-- After any change, verify that the relevant README files, documents under `docs/`, and workflow-facing Makefiles do not contain claims that are now stale; update them in the same change if they do.
-- Supported repeatable local workflows should be accessible via Make targets. Keep the root and `app/Makefile` targets as the canonical entry points for local quality checks, local runtime workflows, and smoke tests.
+- After any change, verify that the relevant README files, documentation, and workflow-facing Makefiles do not contain claims that are now stale; update them in the same change if they do.
+- Supported repeatable local workflows should be accessible via Make targets. Keep the repository Makefiles as the canonical entry points for local quality checks, local runtime workflows, and smoke tests.
 - Keep `.github/copilot-instructions.md` aligned with the current codebase. If a change renames files, targets, variables, commands, or workflows referenced there, update the instructions in the same change so repo-specific guidance stays accurate.
-- If a change affects Key Vault secret requirements, environment behavior, or the nonprod forwarding model, update the root `README.md` in the same change.
-- If a change affects certificate names, DNS names, Key Vault ownership, or certificate renewal expectations, update `docs/certificates.md` in the same change.
+- If a change affects secrets, environment behavior, certificates, DNS, deployment inputs, or operational workflows, update the relevant documentation in the same change.
 
 ## Git Safety
 
@@ -57,9 +59,7 @@
 ## Terraform And Environment Expectations
 
 - Treat `components/core` and `components/container-app` as separate deployment units with a defined contract: core owns shared infrastructure and outputs, while container-app consumes those outputs and wires the FTPS runtime.
-- Keep shared Terraform inputs aligned across `components/inputs-required.tf`, `components/inputs-optional.tf`, and the component-specific input files when changing the infrastructure contract.
 - `components/container-app` owns the FTPS Key Vault secret reads, ACR pull identity, and the `azapi` patching used for registry auth and passive port exposure. Do not remove or bypass that behavior without verifying the resulting Azure Container Apps configuration.
-- Prefer the existing `acr` inputs and environment tfvars for registry configuration rather than introducing new hardcoded registry identifiers or redundant discovery logic.
 - Prod does not auto-create the FTPS runtime secrets.
 - Be careful when reasoning about Key Vault access policy drift in `components/core`: plans can differ between a local user and the Azure DevOps principal because the policy includes `data.azurerm_client_config.current.object_id`.
 

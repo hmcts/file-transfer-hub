@@ -36,8 +36,6 @@ done
 
 Files are **not forwarded immediately on upload**. They wait until the next poll cycle fires.
 
-The interval is controlled by `FTPS_FORWARD_INTERVAL_SECONDS`. The image falls back to `60` if the variable is not set, but in all deployed environments the value is injected by Terraform from the `ftps.forward_interval_seconds` input (also defaulting to `60`). To change it for a specific environment, set `forward_interval_seconds` in the corresponding `environments/<env>/<env>.tfvars` file — no image rebuild is required.
-
 Forwarding can be disabled entirely with `FTPS_ENABLE_STORAGE_FORWARD=false`.
 
 ### 3. Target discovery
@@ -133,7 +131,7 @@ To mitigate this, mount a persistent Azure File Share at `FTPS_LOCAL_UPLOAD_DIR`
 | Variable | Default | Description |
 |---|---|---|
 | `FTPS_ENABLE_STORAGE_FORWARD` | `true` | Enable/disable the forwarding loop |
-| `FTPS_FORWARD_INTERVAL_SECONDS` | `60` | Seconds to sleep between forwarding runs. In deployed environments this is set by the Terraform input `ftps.forward_interval_seconds` (default `60`); override it in the relevant `environments/<env>/<env>.tfvars` without rebuilding the image. |
+| `FTPS_FORWARD_INTERVAL_SECONDS` | `60` | Seconds to sleep between forwarding runs |
 | `FTPS_FORWARD_LOCAL_DIR` | `${FTPS_LOCAL_UPLOAD_DIR}` | Local directory scanned for files to forward |
 | `FTPS_FORWARD_DELETE_AFTER` | `false` | Delete source files after successful transfer to the last target. Set to `true` in all environments to prevent duplicate uploads. |
 | `FTPS_FORWARD_TARGET_COUNT` | _(unset)_ | Number of numbered SFTP targets; falls back to single-target mode if unset or 0 |

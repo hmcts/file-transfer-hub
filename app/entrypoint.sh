@@ -430,4 +430,10 @@ fi
 
 ftps_log "Launching ProFTPD"
 socat TCP4-LISTEN:8086,fork,reuseaddr /dev/null &
-exec /usr/sbin/proftpd -n -c /etc/proftpd/proftpd.conf
+
+/usr/sbin/proftpd -n -c /etc/proftpd/proftpd.conf &
+PROFTPD_PID=$!
+
+trap 'ftps_log "Received SIGTERM - container is shutting down gracefully. Check Azure Container Apps system logs for details."; kill -TERM "${PROFTPD_PID}" 2>/dev/null' TERM
+
+wait "${PROFTPD_PID}"

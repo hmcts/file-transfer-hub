@@ -12,7 +12,7 @@ hub = {
 
 ftps = {
   public_endpoint             = "dtsft.demo.apps.hmcts.net"
-  forward_interval_seconds    = 900
+  # forward_interval_seconds  = 60  # Seconds between forwarding runs. Defaults to 60 if omitted. Set to e.g. 300 for 5 minutes.
   certificate_key_vault_id    = "/subscriptions/d025fece-ce99-4df2-b7a9-b649d3ff2060/resourceGroups/cft-platform-demo-rg/providers/Microsoft.KeyVault/vaults/acmedcdcftappsdemo"
   certificate_secret_name     = "dtsft-demo-apps-hmcts-net"
   certificate_key_secret_name = "dtsft-demo-apps-hmcts-net"

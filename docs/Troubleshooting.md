@@ -207,6 +207,58 @@ See [docs/certificates.md](certificates.md) for the full certificate reference. 
 - Confirm the certificate has not expired: open Key Vault → **Certificates** and check the expiry date. If expired, follow the Let's Encrypt renewal process in [docs/certificates.md](certificates.md).
 - After rotating a certificate secret in Key Vault, the Container App must be restarted to pick up the new value (secrets are injected at startup). Trigger a restart from the Container App overview page → **Restart**.
 
+### ProFTPD killed (signal 15)
+
+If you see a log line such as:
+
+```
+ProFTPD killed (signal 15)
+ProFTPD 1.3.x standalone mode SHUTDOWN
+```
+
+in `ContainerAppConsoleLogs_CL`, this is **not a bug or crash**. Signal 15 (SIGTERM) is the standard graceful shutdown signal sent by Azure Container Apps whenever it stops a container — during a deployment rollout, a manual restart, or a scale-in event. ProFTPD records this as part of its normal shutdown sequence.
+
+From the container's own app log you will also see:
+
+```
+[ftps-entrypoint] Received SIGTERM - container is shutting down gracefully. Check Azure Container Apps system logs for details.
+```
+
+**To find out why the container was stopped**, query the system logs for events around the same timestamp:
+
+```kql
+ContainerAppSystemLogs_CL
+| where TimeGenerated between (datetime('YYYY-MM-DDTHH:MM:00Z') .. datetime('YYYY-MM-DDTHH:MM:00Z'))
+| where ContainerAppName_s == "hub-fth"
+| project TimeGenerated, Reason_s, Log_s, Type_s
+| order by TimeGenerated asc
+```
+
+Replace the two datetime values with a window a few minutes either side of the shutdown time. Common `Reason_s` values you may find:
+
+| Reason | Meaning |
+|---|---|
+| `ContainerAppUpdate` | A Terraform deployment or manual config change triggered a new revision |
+| `RevisionDeactivating` | The previous revision was being replaced by a new one |
+| `ContainerStarted` | The new replica came up successfully |
+| `ReplicaUnhealthy` | Transient readiness probe failures during the handover window — expected and self-resolving |
+| `StoppingContainer` | ACA sent SIGTERM to the old container as part of the rollout |
+
+If the system logs show only `ContainerAppUpdate` / `RevisionDeactivating` / `ContainerStarted` events, the shutdown was caused by a normal deployment and no action is required. Confirm the current revision is healthy:
+
+```kql
+ContainerAppSystemLogs_CL
+| where TimeGenerated > ago(1h)
+| where ContainerAppName_s == "hub-fth"
+| where Reason_s in ("RevisionReady", "ContainerAppReady", "ReplicaUnhealthy")
+| project TimeGenerated, Reason_s, Log_s, Type_s
+| order by TimeGenerated desc
+```
+
+If you see repeated `ReplicaUnhealthy` entries without a subsequent `RevisionReady`, check the **Container not starting** section above.
+
+---
+
 ### FTPS client cannot connect
 
 1. Confirm the client is targeting the correct hostname and port:

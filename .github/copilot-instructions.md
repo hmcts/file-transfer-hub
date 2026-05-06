@@ -39,19 +39,6 @@
 - Use the repository's chosen tools and workflows when they exist; do not silently substitute different tools.
 - If a required local tool is missing, the available version does not satisfy the repository requirements, or a validation command cannot run because of a local environment issue, stop at the narrowest failed validation and report the exact blocker instead of working around it by changing tracked files or switching tools.
 
-### Test-First Workflow
-
-- For behaviour-changing work, identify the expected observable behaviour, edge cases, and failure cases before editing code.
-- When a suitable automated test harness exists, add or update behaviour-focused tests before implementation; if none exists, state the gap and prefer adding a narrow harness.
-- Treat formatting, linting, validation, and Terraform plan output as quality gates, not substitutes for tests.
-- For unit-style or mocked tests, cover representative happy-path, boundary/edge, and negative cases, and assert public contracts rather than implementation details.
-
-### Multi-Domain Changes
-
-- Before implementation, identify all affected domains: Terraform, shell scripts, container runtime, documentation, pipeline, tests, and environment configuration.
-- Apply the standards and validation workflow for every affected domain.
-- Keep application, infrastructure, documentation, and Make targets aligned when a runtime contract changes.
-
 ### Documentation And Operational Notes
 
 - After any change, verify that the relevant README files, documentation, and workflow-facing Makefiles do not contain claims that are now stale; update them in the same change if they do.

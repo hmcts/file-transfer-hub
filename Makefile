@@ -1,38 +1,70 @@
-.PHONY: check format lint validate terraform-check terraform-format terraform-lint terraform-validate
+.PHONY: check check-code check-docs ci_verify fmt fmt-code fmt-docs lint validate test verify makefile-lint shell-fmt shell-fmt-check shell-lint shell-validate terraform-fmt terraform-lint terraform-validate
 
 APP_DIR := app
+CHECKMAKE_FILES := Makefile app/Makefile
 TERRAFORM_DIRS := components environments
 TERRAFORM_MODULE_DIRS := components/core components/container-app
-TF_CONTAINER_NAME ?= tf
-HOST_WORKSPACE_ROOT ?= $(HOME)/workspace
-TF_CONTAINER_WORKSPACE_ROOT ?= /workspace
-TF_CONTAINER_CWD := $(patsubst $(HOST_WORKSPACE_ROOT)%,$(TF_CONTAINER_WORKSPACE_ROOT)%,$(CURDIR))
 
-check:
-	@$(MAKE) format
+# Root level targets
+
+fmt: fmt-code fmt-docs
+
+check: check-code check-docs
+
+test:
+	@$(MAKE) -C $(APP_DIR) test
+
+verify: fmt check test
+ 
+ci_verify: check test
+
+fmt-code: terraform-fmt shell-fmt
+
+fmt-docs:
+	@rumdl fmt .
+
+check-code:
+	@$(MAKE) shell-fmt-check
+	@$(MAKE) terraform-fmt-check
 	@$(MAKE) lint
 	@$(MAKE) validate
 
-format: terraform-format
-	@$(MAKE) -C $(APP_DIR) format
+check-docs:
+	@rumdl fmt --check --diff .
+	@rumdl check .
 
-lint: terraform-lint
+# Component level targets
+
+lint: makefile-lint shell-lint
+
+validate: terraform-validate shell-validate
+
+makefile-lint:
+	@set -e; \
+	for makefile in $(CHECKMAKE_FILES); do \
+		checkmake "$$makefile"; \
+	done
+
+shell-fmt:
+	@$(MAKE) -C $(APP_DIR) fmt
+
+shell-fmt-check:
+	@$(MAKE) -C $(APP_DIR) fmt-check
+
+shell-lint:
 	@$(MAKE) -C $(APP_DIR) lint
 
-validate: terraform-validate
+shell-validate:
 	@$(MAKE) -C $(APP_DIR) validate
 
-terraform-check:
-	@docker exec $(TF_CONTAINER_NAME) sh -lc 'test -d "$(TF_CONTAINER_CWD)"'
+terraform-fmt:
+	@terraform fmt -recursive $(TERRAFORM_DIRS)
 
-terraform-format: terraform-check
-	@docker exec $(TF_CONTAINER_NAME) sh -lc 'cd "$(TF_CONTAINER_CWD)" && mise exec -- terraform fmt -recursive $(TERRAFORM_DIRS)'
+terraform-fmt-check:
+	@terraform fmt -check -diff -recursive $(TERRAFORM_DIRS)
 
-terraform-lint: terraform-check
-	@docker exec $(TF_CONTAINER_NAME) sh -lc 'cd "$(TF_CONTAINER_CWD)" && mise exec -- terraform fmt -check -diff -recursive $(TERRAFORM_DIRS)'
-
-terraform-validate: terraform-check
+terraform-validate:
 	@for module_dir in $(TERRAFORM_MODULE_DIRS); do \
-		docker exec $(TF_CONTAINER_NAME) sh -lc 'cd "$(TF_CONTAINER_CWD)" && mise exec -- terraform -chdir='"$$module_dir"' init -backend=false -input=false' >/dev/null; \
-		docker exec $(TF_CONTAINER_NAME) sh -lc 'cd "$(TF_CONTAINER_CWD)" && mise exec -- terraform -chdir='"$$module_dir"' validate'; \
+		terraform -chdir="$$module_dir" init -backend=false -input=false >/dev/null; \
+		terraform -chdir="$$module_dir" validate; \
 	done

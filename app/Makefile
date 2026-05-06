@@ -4,10 +4,13 @@ ENV_TEMPLATE = .env.local.example
 TEST_ARGS ?=
 SHELL_SCRIPTS = entrypoint.sh ftps-storage-forward.sh test-local-ftps.sh
 
-.PHONY: certs ensure-env up down test connect format lint validate
+.PHONY: certs ensure-env up down test connect fmt fmt-check lint validate
 
-format:
+fmt:
 	@shfmt -w $(SHELL_SCRIPTS)
+
+fmt-check:
+	@shfmt -d $(SHELL_SCRIPTS)
 
 lint:
 	@shellcheck $(SHELL_SCRIPTS)
@@ -16,6 +19,9 @@ validate:
 	@for script in $(SHELL_SCRIPTS); do \
 		bash -n $$script; \
 	done
+
+test:
+	@./test-local-ftps.sh $(TEST_ARGS)
 
 certs:
 	@mkdir -p certs
@@ -45,9 +51,6 @@ up: certs ensure-env
 
 down:
 	@docker compose $(COMPOSE_ARGS) down -v --remove-orphans
-
-test:
-	@./test-local-ftps.sh $(TEST_ARGS)
 
 connect:
 	@container_id="$$(docker compose $(COMPOSE_ARGS) ps -q ftps)"; \

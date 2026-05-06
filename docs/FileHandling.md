@@ -6,7 +6,7 @@ This document describes how files are handled from the moment a client uploads t
 
 ## Overview
 
-```
+```text
 FTPS client → ProFTPD (port 990) → local upload dir → lftp (poll loop) → SFTP target(s)
 ```
 
@@ -27,7 +27,7 @@ This directory lives on the **ephemeral container filesystem** — it is not per
 
 `entrypoint.sh` starts a background subshell before launching ProFTPD. This subshell runs `ftps-storage-forward.sh` in an infinite loop, sleeping between iterations:
 
-```
+```bash
 while true; do
     ftps-storage-forward.sh
     sleep ${FTPS_FORWARD_INTERVAL_SECONDS}
@@ -46,24 +46,24 @@ Forwarding can be disabled entirely with `FTPS_ENABLE_STORAGE_FORWARD=false`.
 
 **Numbered multi-target mode** — used when `FTPS_FORWARD_TARGET_COUNT` is set to a positive integer:
 
-| Variable | Purpose |
-|---|---|
-| `FTPS_FORWARD_TARGET_COUNT` | Number of targets (0-indexed) |
-| `FTPS_FORWARD_TARGET_N_HOST` | Hostname or IP of target N |
-| `FTPS_FORWARD_TARGET_N_PORT` | Port of target N (default: 22) |
-| `FTPS_FORWARD_TARGET_N_USERNAME` | SFTP username for target N |
-| `FTPS_FORWARD_TARGET_N_PASSWORD` | SFTP password for target N |
-| `FTPS_FORWARD_TARGET_N_REMOTE_DIR` | Remote directory on target N (default: `.`) |
-| `FTPS_FORWARD_TARGET_N_NAME` | Human-readable label for logs (default: `target-N+1`) |
+| Variable                           | Purpose                                               |
+| ---------------------------------- | ----------------------------------------------------- |
+| `FTPS_FORWARD_TARGET_COUNT`        | Number of targets (0-indexed)                         |
+| `FTPS_FORWARD_TARGET_N_HOST`       | Hostname or IP of target N                            |
+| `FTPS_FORWARD_TARGET_N_PORT`       | Port of target N (default: 22)                        |
+| `FTPS_FORWARD_TARGET_N_USERNAME`   | SFTP username for target N                            |
+| `FTPS_FORWARD_TARGET_N_PASSWORD`   | SFTP password for target N                            |
+| `FTPS_FORWARD_TARGET_N_REMOTE_DIR` | Remote directory on target N (default: `.`)           |
+| `FTPS_FORWARD_TARGET_N_NAME`       | Human-readable label for logs (default: `target-N+1`) |
 
 **Single-target fallback** — used when `FTPS_FORWARD_TARGET_COUNT` is unset or zero. Reads from the legacy `FTPS_STORAGE_SFTP_*` variables:
 
-| Variable | Purpose |
-|---|---|
-| `FTPS_STORAGE_SFTP_HOST` | SFTP hostname |
-| `FTPS_STORAGE_SFTP_PORT` | SFTP port (default: 22) |
-| `FTPS_STORAGE_SFTP_USERNAME` | SFTP username |
-| `FTPS_STORAGE_SFTP_PASSWORD` | SFTP password |
+| Variable                       | Purpose                         |
+| ------------------------------ | ------------------------------- |
+| `FTPS_STORAGE_SFTP_HOST`       | SFTP hostname                   |
+| `FTPS_STORAGE_SFTP_PORT`       | SFTP port (default: 22)         |
+| `FTPS_STORAGE_SFTP_USERNAME`   | SFTP username                   |
+| `FTPS_STORAGE_SFTP_PASSWORD`   | SFTP password                   |
 | `FTPS_STORAGE_SFTP_REMOTE_DIR` | Remote directory (default: `.`) |
 
 Any target with a missing host, username, or password is skipped with a warning. If no valid targets remain the script exits without error.
@@ -72,16 +72,16 @@ Any target with a missing host, username, or password is skipped with a warning.
 
 For each target, `lftp` is invoked with:
 
-```
+```text
 mirror --reverse --continue --only-newer --parallel=1 [--Remove-source-files] <local-dir> <remote-dir>
 ```
 
-| Flag | Effect |
-|---|---|
-| `--reverse` | Push local directory contents to the remote |
-| `--continue` | Resume interrupted transfers where possible |
-| `--only-newer` | Skip files whose mtime is not newer than the remote copy |
-| `--parallel=1` | Transfer one file at a time per target |
+| Flag                    | Effect                                                                 |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `--reverse`             | Push local directory contents to the remote                            |
+| `--continue`            | Resume interrupted transfers where possible                            |
+| `--only-newer`          | Skip files whose mtime is not newer than the remote copy               |
+| `--parallel=1`          | Transfer one file at a time per target                                 |
 | `--Remove-source-files` | Delete source file after successful transfer (conditional — see below) |
 
 The SFTP connection is made over SSH with `StrictHostKeyChecking=accept-new` (trust-on-first-use), a 20-second timeout, and up to 2 retries.

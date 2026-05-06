@@ -42,6 +42,7 @@
 ### Documentation And Operational Notes
 
 - After any change, verify that the relevant README files, documentation, and workflow-facing Makefiles do not contain claims that are now stale; update them in the same change if they do.
+- If a change introduces a new language, propose formatter, lint, and syntax-check tools for user approval, then update the relevant Make targets and instructions once approved.
 - Supported repeatable local workflows should be accessible via Make targets. Keep the repository Makefiles as the canonical entry points for local quality checks, local runtime workflows and tests.
 - Keep `.github/copilot-instructions.md` aligned with the current codebase. If a change renames files, targets, variables, commands, or workflows referenced there, update the instructions in the same change so repo-specific guidance stays accurate.
 - If a change introduces new generated files, local runtime artifacts, or secrets that should not be committed, update the relevant `.gitignore` in the same change and keep local workflows self-contained.
@@ -50,23 +51,27 @@
 
 ### Shell Script Standards
 
-- Write shell scripts so they are `shfmt`-clean and `shellcheck`-clean.
-- Keep shell formatting aligned with the repository `.editorconfig` configuration.
+- Shell scripts are formatted with `shfmt`, linted with `shellcheck`, and syntax-checked with `bash -n`.
 - For shell scripts use `bash` with `set -euo pipefail`.
 
 ### Terraform Standards
 
-- Write Terraform so it is `terraform fmt`-clean and `terraform validate`-clean.
+- Terraform code is checked with `terraform fmt` and `terraform validate`.
 - Prefer input variables and environment configuration files over hardcoded environment-specific logic.
 - Follow the existing Terraform module, variable, and environment configuration patterns already used in the repository.
 
 ### Makefile Standards
 
-- Keep repository Makefiles `checkmake`-clean.
+- Makefiles are linted with `checkmake` using the repo-level `checkmake.ini`.
 - Keep the root Makefile focused on repo-level orchestration. For new non-Terraform apps or components, add workflow targets in a local Makefile and delegate from the root only when needed.
+
+## Other Standards
+
+- Markdown documentation is formatted and linted with `rumdl`, with the line-length rule disabled in the repo-level `.rumdl.toml`.
 
 ### Local Quality Gates
 
+- Use the repository's existing conventions and Make targets as the source of truth for formatting, linting, validation, and tests.
 - For documentation-only changes, run `make fmt-docs` and `make check-docs` from the repository root before considering the task complete.
 - For changes that modify tracked non-documentation files covered by the repository quality gates, run `make verify` from the repository root before considering the task complete. This includes mixed code-and-documentation changes.
 - Keep the local quality gates aligned with the repository structure. If you add new validated code, infrastructure, workflow, or documentation surfaces, update the relevant Makefile targets in the same change so the appropriate check targets continue to cover them.

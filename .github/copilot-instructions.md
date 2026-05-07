@@ -34,7 +34,7 @@
 - Prefer single-purpose scripts, modules, and functions. Keep responsibilities narrow and avoid combining unrelated behavior in one unit when a smaller focused abstraction would be clearer.
 - Avoid hidden side effects, and unnecessary indirection.
 - Write comments for future maintainers — human or AI — who need to understand intent, constraints, side effects, invariants, and safe usage. Do not comment obvious implementation steps.
-- Add concise contract comments or docstrings for non-obvious routines.
+- Follow the format and structure of existing comments in the repository; when adding new comments or docstrings, match the local style used by the surrounding code.
 - Enforce critical assumptions at system or trust boundaries using types, tests, schemas, validation, or runtime checks.
 - When changing code, keep comments, docstrings, examples, and related documentation in sync with the implementation. If an existing comment is stale, misleading, redundant, or contradicted by the code, update it or remove it.
 

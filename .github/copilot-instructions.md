@@ -32,7 +32,11 @@
 - Write code that is maintainable, human-readable, and easy to reason about.
 - Apply practical Clean Code principles where they fit the language: clear naming, small focused functions or units, straightforward control flow, and explicit error handling and intent.
 - Prefer single-purpose scripts, modules, and functions. Keep responsibilities narrow and avoid combining unrelated behavior in one unit when a smaller focused abstraction would be clearer.
-- Avoid dense one-liners, hidden side effects, and unnecessary indirection.
+- Avoid hidden side effects, and unnecessary indirection.
+- Write comments for future maintainers — human or AI — who need to understand intent, constraints, side effects, invariants, and safe usage. Do not comment obvious implementation steps.
+- Add concise contract comments or docstrings for non-obvious routines.
+- Enforce critical assumptions at system or trust boundaries using types, tests, schemas, validation, or runtime checks.
+- When changing code, keep comments, docstrings, examples, and related documentation in sync with the implementation. If an existing comment is stale, misleading, redundant, or contradicted by the code, update it or remove it.
 
 ### Tooling And Validation Preconditions
 
@@ -54,11 +58,28 @@
 - Shell scripts are formatted with `shfmt`, linted with `shellcheck`, and syntax-checked with `bash -n`.
 - For shell scripts use `bash` with `set -euo pipefail`.
 
+### Shell Script Standards (Goes into shell script writing skill)
+
+- For shell scripts, add concise function-level contract comments for non-trivial functions that:
+  - read environment variables
+  - mutate globals or shared arrays
+  - depend on external commands
+  - construct command strings or heredocs for another tool
+  - rely on specific return-code semantics
+  - enforce ordering, cleanup, security, or safety invariants
+- Comments should describe the contract, side effects, and failure behaviour, not repeat the implementation.
+
 ### Terraform Standards
 
 - Terraform code is checked with `terraform fmt` and `terraform validate`.
 - Prefer input variables and environment configuration files over hardcoded environment-specific logic.
 - Follow the existing Terraform module, variable, and environment configuration patterns already used in the repository.
+
+### Terraform Standards (goes into Terraform writing skill)
+
+- For Terraform, document non-obvious resource relationships, lifecycle settings, provider constraints, and cross-module contracts.
+- Prefer variable validation blocks for critical input assumptions.
+- Avoid comments that restate resource names or obvious arguments.
 
 ### Makefile Standards
 

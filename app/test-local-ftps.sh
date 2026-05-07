@@ -125,6 +125,17 @@ validate_case_name() {
     return 1
 }
 
+# Parses smoke-test case arguments.
+#
+# Globals:
+#   ALL_CASES: Read when no explicit case names are provided.
+#   SELECTED_CASES: Set or appended with selected case names.
+# Arguments:
+#   $@: Optional case names, -h or --help.
+# Outputs:
+#   Writes usage to stdout for help and validation failures to stderr.
+# Returns:
+#   0 when cases are selected; exits 0 for help and 1 for invalid cases.
 parse_args() {
     local case_name
 
@@ -146,10 +157,27 @@ parse_args() {
     done
 }
 
+# Runs docker compose for the active smoke-test project.
+#
+# Globals:
+#   CURRENT_COMPOSE_PROJECT_NAME: Read as the compose project name.
+#   SCRIPT_DIR: Read to locate docker-compose.yaml.
+# Arguments:
+#   $@: Arguments passed through to docker compose.
+# Outputs:
+#   Writes docker compose output to stdout/stderr.
+# Returns:
+#   The docker compose exit status.
 compose() {
     docker compose -p "${CURRENT_COMPOSE_PROJECT_NAME}" -f "${SCRIPT_DIR}/docker-compose.yaml" "$@"
 }
 
+# Tears down the active compose project on a best-effort basis.
+#
+# Globals:
+#   CURRENT_COMPOSE_PROJECT_NAME: Read to decide which project to remove.
+# Returns:
+#   0 even when compose teardown fails, so cleanup can continue.
 compose_down() {
     if [[ -z "${CURRENT_COMPOSE_PROJECT_NAME}" ]]; then
         return 0
@@ -158,15 +186,36 @@ compose_down() {
     compose down -v --remove-orphans >/dev/null 2>&1 || true
 }
 
+# Removes compose projects known to current and older smoke-test layouts.
+#
+# Globals:
+#   KNOWN_COMPOSE_PROJECTS: Read as the cleanup project list.
+#   CURRENT_COMPOSE_PROJECT_NAME: Set for each project before teardown.
+# Returns:
+#   0 after best-effort cleanup attempts complete.
 cleanup_known_smoke_projects() {
     local project_name
 
+    # Remove project names used by current and older smoke-test variants before
+    # each case. This keeps reruns deterministic after interrupted debugging and
+    # satisfies the repository rule that local smoke stacks are left clean.
     for project_name in "${KNOWN_COMPOSE_PROJECTS[@]}"; do
         CURRENT_COMPOSE_PROJECT_NAME="${project_name}"
         compose_down
     done
 }
 
+# Handles script exit cleanup for smoke-test resources.
+#
+# Globals:
+#   PRESERVE_STACK: Read to decide whether to skip teardown.
+#   STARTED_COMPOSE_PROJECTS: Read as the list of started case projects.
+#   CURRENT_COMPOSE_PROJECT_NAME: Set while removing started projects.
+#   TEMP_DIR: Read as the temporary directory to remove or report.
+# Outputs:
+#   Writes preserve-mode details to stderr.
+# Returns:
+#   0 when preserve mode is enabled or cleanup completes.
 # shellcheck disable=SC2329
 cleanup() {
     if [[ "${PRESERVE_STACK}" == "true" ]]; then
@@ -198,6 +247,12 @@ require_command() {
     fi
 }
 
+# Polls the FTPS listener until TLS is available.
+#
+# Outputs:
+#   Writes readiness progress to stdout and timeout diagnostics to stderr.
+# Returns:
+#   0 when FTPS accepts TLS before timeout; 1 after dumping container logs.
 wait_for_ftps() {
     local attempt
     for attempt in $(seq 1 30); do
@@ -218,13 +273,22 @@ wait_for_ftps() {
     return 1
 }
 
+# Polls a target container path until a forwarded file appears.
+#
+# Arguments:
+#   $1: Docker compose service name to inspect.
+#   $2: File path expected inside the target service container.
+# Outputs:
+#   Writes polling progress to stdout and timeout diagnostics to stderr.
+# Returns:
+#   0 when the file appears before timeout; 1 after dumping FTPS logs.
 wait_for_forwarded_file() {
     local service_name="$1"
     local remote_path="$2"
     local attempt
 
     for attempt in $(seq 1 30); do
-        if compose exec -T "${service_name}" sh -lc "test -f ${remote_path}"; then
+        if compose exec -T "${service_name}" sh -lc "test -f \"\$1\"" sh "${remote_path}"; then
             printf 'Forwarded file detected on %s after %s attempt(s)\n' "${service_name}" "${attempt}"
             return 0
         fi
@@ -245,6 +309,22 @@ base64_no_wrap() {
     openssl base64 -A -in "$1"
 }
 
+# Prepares the mounted PEM certificate smoke-test case.
+#
+# Globals:
+#   CERTS_DIR: Set to the case certificate directory.
+#   FTPS_CERTS_DIR: Exported for docker compose to mount test certificates.
+#   FTPS_CERTIFICATE_PEM: Unset so mounted certificate mode is used.
+#   FTPS_CERTIFICATE_KEY_PEM: Unset so mounted certificate mode is used.
+#   FTPS_CERTIFICATE_PKCS12_PASSWORD: Unset so mounted certificate mode is used.
+#   FTPS_CERTIFICATE_PATH: Unset so the container default/mounted path is used.
+#   CURRENT_CERTIFICATE_PATH: Set to the certificate path inside the container.
+# Arguments:
+#   $1: Case working directory.
+# Outputs:
+#   Writes generated key, certificate and combined PEM fixture files.
+# Returns:
+#   0 when fixture generation succeeds; non-zero if OpenSSL or file writes fail.
 prepare_pem_case() {
     local case_dir="$1"
 
@@ -267,6 +347,17 @@ prepare_pem_case() {
     CURRENT_CERTIFICATE_PATH="/certs/ftps.pem"
 }
 
+# Prepares the PEM case with a comma-bearing target password.
+#
+# Globals:
+#   FTPS_FORWARD_TARGET_0_PASSWORD: Exported for the FTPS forwarder target.
+#   SFTP_TARGET_0_PASSWORD: Exported for the matching local SFTP target.
+# Arguments:
+#   $1: Case working directory passed to prepare_pem_case.
+# Outputs:
+#   Writes the same certificate fixture files as prepare_pem_case.
+# Returns:
+#   The prepare_pem_case status.
 prepare_pem_special_target_password_case() {
     prepare_pem_case "$1"
 
@@ -274,6 +365,24 @@ prepare_pem_special_target_password_case() {
     export SFTP_TARGET_0_PASSWORD="sftp,pass"
 }
 
+# Prepares the base64 PKCS#12 certificate-chain smoke-test case.
+#
+# Globals:
+#   FTPS_TEST_PKCS12_CHAIN_BUNDLE_FILE: Read as an optional external fixture path.
+#   CERTS_DIR: Set to the case certificate directory.
+#   FTPS_CERTS_DIR: Exported for docker compose.
+#   FTPS_CERTIFICATE_PATH: Exported as the in-container normalized PEM path.
+#   FTPS_CERTIFICATE_PEM: Exported as base64 PKCS#12 content.
+#   FTPS_CERTIFICATE_KEY_PEM: Unset so combined PKCS#12 input is used.
+#   FTPS_CERTIFICATE_PKCS12_PASSWORD: Unset for the empty-password test bundle.
+#   CURRENT_CERTIFICATE_PATH: Set to the certificate path inside the container.
+# Arguments:
+#   $1: Case working directory.
+# Outputs:
+#   Writes or copies a PKCS#12 bundle and writes fixture key/certificate files.
+#   Writes a warning to stderr when a configured external fixture is missing.
+# Returns:
+#   0 when fixture preparation succeeds; non-zero on OpenSSL or file failures.
 prepare_pkcs12_chain_case() {
     local case_dir="$1"
     local bundle_file fixture_file
@@ -285,10 +394,12 @@ prepare_pkcs12_chain_case() {
     fixture_file="${FTPS_TEST_PKCS12_CHAIN_BUNDLE_FILE:-}"
     if [[ -n "${fixture_file}" ]]; then
         if [[ ! -f "${fixture_file}" ]]; then
-            echo "PKCS12 chain fixture file not found: ${fixture_file}" >&2
-            return 1
+            echo "PKCS12 chain fixture file not found: ${fixture_file}; falling back to generated synthetic fixture" >&2
+            fixture_file=""
         fi
+    fi
 
+    if [[ -n "${fixture_file}" ]]; then
         cp "${fixture_file}" "${bundle_file}"
     else
         openssl req -x509 -newkey rsa:2048 \
@@ -330,6 +441,14 @@ prepare_pkcs12_chain_case() {
     CURRENT_CERTIFICATE_PATH="${FTPS_CERTIFICATE_PATH}"
 }
 
+# Asserts the FTPS container logs contain a fixed string.
+#
+# Arguments:
+#   $1: Fixed log message expected in the FTPS container logs.
+# Outputs:
+#   Writes assertion failure details and full logs to stderr.
+# Returns:
+#   0 when the log message is present; 1 otherwise.
 assert_container_logs_contain() {
     local expected_message="$1"
     local container_logs
@@ -343,13 +462,24 @@ assert_container_logs_contain() {
     fi
 }
 
+# Asserts generated PEM block counts inside the FTPS container.
+#
+# Globals:
+#   CURRENT_CERTIFICATE_PATH: Read as the certificate path inside the container.
+# Arguments:
+#   $1: Expected private-key block count.
+#   $2: Expected certificate block count.
+# Outputs:
+#   Writes mismatch details and PEM block headers to stderr.
+# Returns:
+#   0 when counts match; 1 otherwise.
 assert_certificate_blocks() {
     local expected_private_keys="$1"
     local expected_certificates="$2"
     local actual_private_keys actual_certificates
 
-    actual_private_keys="$(compose exec -T ftps sh -lc "grep -Ec 'BEGIN (RSA |EC |ENCRYPTED )?PRIVATE KEY' '${CURRENT_CERTIFICATE_PATH}'")"
-    actual_certificates="$(compose exec -T ftps sh -lc "grep -c 'BEGIN CERTIFICATE' '${CURRENT_CERTIFICATE_PATH}'")"
+    actual_private_keys="$(compose exec -T ftps sh -lc "grep -Ec 'BEGIN (RSA |EC |ENCRYPTED )?PRIVATE KEY' \"\$1\"" sh "${CURRENT_CERTIFICATE_PATH}")"
+    actual_certificates="$(compose exec -T ftps sh -lc "grep -c 'BEGIN CERTIFICATE' \"\$1\"" sh "${CURRENT_CERTIFICATE_PATH}")"
 
     if [[ "${actual_private_keys}" != "${expected_private_keys}" || "${actual_certificates}" != "${expected_certificates}" ]]; then
         echo "Generated certificate PEM blocks did not match expected counts" >&2
@@ -357,11 +487,19 @@ assert_certificate_blocks() {
         echo "Actual private keys:   ${actual_private_keys}" >&2
         echo "Expected certificates: ${expected_certificates}" >&2
         echo "Actual certificates:   ${actual_certificates}" >&2
-        compose exec -T ftps sh -lc "grep 'BEGIN ' '${CURRENT_CERTIFICATE_PATH}'" >&2 || true
+        compose exec -T ftps sh -lc "grep 'BEGIN ' \"\$1\"" sh "${CURRENT_CERTIFICATE_PATH}" >&2 || true
         return 1
     fi
 }
 
+# Asserts the live FTPS endpoint presents the expected certificate count.
+#
+# Arguments:
+#   $1: Expected certificate block count from the TLS handshake.
+# Outputs:
+#   Writes mismatch details and handshake output to stderr.
+# Returns:
+#   0 when counts match; 1 otherwise.
 assert_presented_certificate_count() {
     local expected_certificates="$1"
     local actual_certificates
@@ -377,6 +515,26 @@ assert_presented_certificate_count() {
     fi
 }
 
+# Runs one isolated FTPS-to-SFTP smoke-test case.
+#
+# Globals:
+#   TEMP_DIR: Read as the parent directory for case files.
+#   COMPOSE_PROJECT_PREFIX: Read when constructing the compose project name.
+#   CURRENT_COMPOSE_PROJECT_NAME: Set to the case compose project name.
+#   STARTED_COMPOSE_PROJECTS: Appended with the case compose project name.
+#   TEST_TIMESTAMP: Read when constructing the upload filename.
+#   TEST_FILENAME: Set to the generated upload filename.
+#   TEST_PAYLOAD: Set to the expected file payload.
+#   UPLOAD_FILE: Set to the local upload file path.
+#   FTPS_LOCAL_PASSWORD: Read for the FTPS upload credential.
+#   FORWARDED_PAYLOAD: Set while validating target file contents.
+#   PRESERVE_STACK: Read to decide whether to leave the case stack running.
+# Arguments:
+#   $1: Smoke-test case name.
+# Outputs:
+#   Writes docker compose, readiness, upload and assertion output to stdout/stderr.
+# Returns:
+#   0 when the case passes; 1 on setup, startup, upload, forwarding or assertion failure.
 run_smoke_case() {
     local case_name="$1"
     local case_dir="${TEMP_DIR}/${case_name}"
@@ -437,7 +595,7 @@ run_smoke_case() {
     wait_for_forwarded_file sftp-target "/home/sftpuser/dropoff/${TEST_FILENAME}" || return 1
     wait_for_forwarded_file sftp-target-2 "/home/sftpuser2/replica/${TEST_FILENAME}" || return 1
 
-    FORWARDED_PAYLOAD="$(compose exec -T sftp-target sh -lc "cat /home/sftpuser/dropoff/${TEST_FILENAME}")"
+    FORWARDED_PAYLOAD="$(compose exec -T sftp-target sh -lc "cat \"\$1\"" sh "/home/sftpuser/dropoff/${TEST_FILENAME}")"
 
     if [[ "${FORWARDED_PAYLOAD}" != "${TEST_PAYLOAD}" ]]; then
         echo "Forwarded file contents do not match uploaded payload on sftp-target" >&2
@@ -446,7 +604,7 @@ run_smoke_case() {
         return 1
     fi
 
-    FORWARDED_PAYLOAD="$(compose exec -T sftp-target-2 sh -lc "cat /home/sftpuser2/replica/${TEST_FILENAME}")"
+    FORWARDED_PAYLOAD="$(compose exec -T sftp-target-2 sh -lc "cat \"\$1\"" sh "/home/sftpuser2/replica/${TEST_FILENAME}")"
 
     if [[ "${FORWARDED_PAYLOAD}" != "${TEST_PAYLOAD}" ]]; then
         echo "Forwarded file contents do not match uploaded payload on sftp-target-2" >&2

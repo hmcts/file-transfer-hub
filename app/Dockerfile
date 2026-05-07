@@ -18,6 +18,7 @@ RUN apt-get update \
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY ftps-storage-forward.sh /usr/local/bin/ftps-storage-forward.sh
+COPY lib/ /usr/local/lib/file-transfer-hub/
 COPY proftpd-ftps.conf.template /etc/proftpd/proftpd-ftps.conf.template
 
 RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/ftps-storage-forward.sh

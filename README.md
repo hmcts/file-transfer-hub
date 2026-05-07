@@ -14,7 +14,7 @@ This repository contains the Terraform and application code for an FTPS-based fi
 - `make ci_verify`: runs the CI-safe non-mutating verification flow by executing `make check` and then `make test`.
 - `make fmt`: formats the tracked shell scripts in `app/`, runs `terraform fmt -recursive` across `components/` and `environments/`, and formats Markdown documentation with `rumdl fmt`.
 - `make check`: runs the full non-mutating repo quality gate by combining `make check-code` and `make check-docs`.
-- `make test`: runs the root smoke-test entry point by delegating to `app/Makefile`.
+- `make test`: runs the app unit-test-plus-smoke-test entry point by delegating to `app/Makefile`.
 - `make check-code`: verifies shell formatting drift, runs `shellcheck` for the tracked shell scripts in `app/`, lints the repo Makefiles with `checkmake`, checks Terraform formatting drift, and runs Bash plus Terraform validation.
 - `make check-docs`: checks Markdown formatting drift with `rumdl fmt --check --diff` and then runs Markdown linting with `rumdl check`.
 
@@ -23,6 +23,7 @@ The files under `environments/` are covered by the Terraform formatting and form
 ## Coding Standards
 
 - Shell scripts are formatted with `shfmt`, linted with `shellcheck`, and syntax-checked with `bash -n`.
+- Bats-core is used for focused unit tests around extracted shell helper logic.
 - Repository Makefiles are linted with `checkmake` using the repo-level `checkmake.ini`.
 - Terraform code is checked with `terraform fmt` and `terraform validate` through the repository Make targets.
 - Markdown documentation is formatted and linted with `rumdl`, with the line-length rule disabled in the repo-level `.rumdl.toml`.

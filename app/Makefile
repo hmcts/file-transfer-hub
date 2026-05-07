@@ -2,9 +2,11 @@ COMPOSE_PROJECT_NAME ?= ftps-local
 COMPOSE_ARGS = -p $(COMPOSE_PROJECT_NAME) -f docker-compose.yaml
 ENV_TEMPLATE = .env.local.example
 TEST_ARGS ?=
-SHELL_SCRIPTS = entrypoint.sh ftps-storage-forward.sh test-local-ftps.sh
+BATS ?= bats
+SHELL_SCRIPTS = entrypoint.sh ftps-storage-forward.sh test-local-ftps.sh lib/ftps-entrypoint-certificates.sh lib/ftps-storage-forward.sh tests/bats/test_helper.bash
+BATS_TEST_FILES = tests/bats/entrypoint-certs.bats tests/bats/storage-forward.bats
 
-.PHONY: certs ensure-env up down test connect fmt fmt-check lint validate
+.PHONY: certs ensure-env up down smoke-test unit-test test connect fmt fmt-check lint validate
 
 fmt:
 	@shfmt -w $(SHELL_SCRIPTS)
@@ -21,6 +23,13 @@ validate:
 	done
 
 test:
+	@$(MAKE) unit-test
+	@$(MAKE) smoke-test
+
+unit-test:
+	@$(BATS) $(BATS_TEST_FILES)
+
+smoke-test:
 	@./test-local-ftps.sh $(TEST_ARGS)
 
 certs:

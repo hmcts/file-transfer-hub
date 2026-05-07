@@ -33,6 +33,18 @@ docker build -t file-transfer-hub-ftps:local .
 Run the disposable local smoke test from the `app` directory:
 
 ```bash
+make smoke-test
+```
+
+Run the Bats helper tests only:
+
+```bash
+make unit-test
+```
+
+Run both the Bats helper tests and the disposable local smoke test:
+
+```bash
 make test
 ```
 
@@ -51,6 +63,7 @@ FTPS_LOCAL_PASSWORD='localpass123!' make test
 
 What the test does:
 
+- runs the Bats unit tests for the extracted certificate and forwarding helper logic
 - builds the FTPS image locally
 - runs the FTPS startup and forwarder smoke flow against two certificate inputs for the same image
 - covers a mounted combined PEM file and a base64 PKCS#12 bundle with key plus server certificate plus signing certificate
@@ -65,7 +78,7 @@ The default PKCS#12 case is synthetic. If you want to reproduce a specific real-
 FTPS_TEST_PKCS12_CHAIN_BUNDLE_FILE="path/tp/real-world-cert-bundle.p12" make test TEST_ARGS="pkcs12-chain"
 ```
 
-That override bypasses the generated synthetic chain bundle and copies the provided file into the test case.
+That override bypasses the generated synthetic chain bundle and copies the provided file into the test case. If the override path is set but the file no longer exists, the smoke test logs a warning and falls back to the generated synthetic chain bundle so stale shell exports do not break local verification.
 
 The script cleans up the test containers, volumes, temporary certificates, and uploaded test payload automatically on exit.
 
@@ -116,7 +129,9 @@ Useful local targets:
 - `make up`: generate certs if needed and start the local FTPS-plus-SFTP-targets stack
 - `make connect`: open an interactive shell in the running local FTPS container created by `make up`
 - `make down`: stop and remove the local FTPS-plus-SFTP-targets stack
-- `make test`: run the automated FTPS-to-SFTP smoke test with temporary certs and automatic cleanup
+- `make unit-test`: run the Bats helper tests for the extracted shell libraries
+- `make smoke-test`: run the automated FTPS-to-SFTP smoke test with temporary certs and automatic cleanup
+- `make test`: run `make unit-test` and then `make smoke-test`
 - `make fmt`: format the tracked Bash scripts with `shfmt`
 - `make fmt-check`: check for `shfmt` formatting drift in the tracked Bash scripts
 - `make lint`: lint the tracked Bash scripts with `shellcheck`
@@ -124,9 +139,11 @@ Useful local targets:
 
 The compose file mounts `./certs/ftps.pem` into the container and exposes the full FTPS passive range. The smoke test does not reuse this directory; it creates a temporary cert directory under `app/`, mounts that for the test run, and removes it on exit so manual cert files are left alone.
 
-Use `make up` when you want to inspect the local FTPS-to-SFTP forwarding stack interactively. Use `make connect` to open a shell in the running FTPS container from that stack. Use `make test` when you want a repeatable pass/fail check after image changes, including fan-out copies to both local targets.
+Use `make up` when you want to inspect the local FTPS-to-SFTP forwarding stack interactively. Use `make connect` to open a shell in the running FTPS container from that stack. Use `make unit-test` when you want fast feedback on helper logic only, `make smoke-test` when you want the disposable end-to-end container check, and `make test` when you want both.
 
 Use `make fmt`, `make fmt-check`, `make lint`, and `make validate` when you want fast local script hygiene checks without starting the Docker smoke stack.
+
+The unit-test target requires `bats` from Bats-core to be available on your `PATH`.
 
 If no local FTPS container is running, `make connect` exits with:
 
@@ -150,9 +167,9 @@ The automated smoke test does not read the manual password from `app/.env`; it f
 
 - `FTPS_LISTEN_PORT`: FTPS control port the server listens on
 - `FTPS_PUBLIC_IP`: Hostname or IP returned to FTPS clients for passive connections
-- `FTPS_LOCAL_USER`: FTPS login username
+- `FTPS_LOCAL_USER`: FTPS login username; must be a valid Linux account name because startup creates or updates the local container account
 - `FTPS_LOCAL_PASSWORD`: FTPS login password
-- `FTPS_ADDITIONAL_USER`: Optional second FTPS login username
+- `FTPS_ADDITIONAL_USER`: Optional second FTPS login username; must also be a valid Linux account name and cannot match `FTPS_LOCAL_USER`
 - `FTPS_ADDITIONAL_PASSWORD`: Optional second FTPS login password
 - `FTPS_CERTIFICATE_PATH`: Path to the source combined PEM bundle containing the private key, the leaf certificate, and any optional chain certificates
 - `FTPS_CERTIFICATE_PEM`: Certificate PEM content or a combined PEM bundle when injecting via secrets
@@ -176,9 +193,11 @@ After startup has a normalized PEM bundle, it derives a dedicated ProFTPD server
 - `FTPS_FORWARD_TARGET_<n>_PORT`: Destination SFTP port for target `n`
 - `FTPS_FORWARD_TARGET_<n>_USERNAME`: Destination SFTP username for target `n`
 - `FTPS_FORWARD_TARGET_<n>_PASSWORD`: Destination SFTP password for target `n`
-- `FTPS_FORWARD_TARGET_<n>_REMOTE_DIR`: Destination directory on the SFTP server for target `n`
+- `FTPS_FORWARD_TARGET_<n>_REMOTE_DIR`: Destination directory on the SFTP server for target `n`; double quotes, backslashes, and newlines are rejected because the value is rendered into an `lftp` command file
 
 If `FTPS_FORWARD_TARGET_COUNT` is unset, the container falls back to the legacy single-target variables `FTPS_STORAGE_SFTP_HOST`, `FTPS_STORAGE_SFTP_PORT`, `FTPS_STORAGE_SFTP_USERNAME`, `FTPS_STORAGE_SFTP_PASSWORD`, and `FTPS_STORAGE_SFTP_REMOTE_DIR`.
+
+Startup validates the FTPS listen and passive ports, the forwarding interval, and any configured forwarding target ports before launching ProFTPD or the forwarding loop so invalid environment configuration fails early.
 
 Current temporary SFTP trust behavior:
 

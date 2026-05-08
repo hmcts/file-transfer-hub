@@ -48,5 +48,6 @@ Until the real downstream SFTP server is available, nonprod uses the project sto
 
 - [FTPS Container — local build, smoke test, and environment variables](app/README.md)
 - [File Handling — upload flow, forwarding loop, deduplication, and ephemeral storage risk](docs/FileHandling.md)
+- [Networking — FTPS ingress, passive ports, and downstream SFTP paths](docs/Networking.md)
 - [Certificates — Let's Encrypt renewal and per-environment Key Vault references](docs/certificates.md)
 - [Troubleshooting — BAU log access, KQL queries, and common issues](docs/Troubleshooting.md)

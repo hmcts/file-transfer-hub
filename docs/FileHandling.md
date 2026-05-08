@@ -126,6 +126,60 @@ The local upload directory is on the container's ephemeral filesystem by default
 
 To mitigate this, mount a persistent Azure File Share at `FTPS_LOCAL_UPLOAD_DIR` so that uploaded files survive container restarts.
 
+## Blob retention policy
+
+The storage-side retention policy is planned to be managed through an Azure Blob lifecycle policy named `BlobRetentionPolicy`.
+
+This is intended to control automatic cleanup of retained blobs after a defined number of days, rather than relying on manual housekeeping.
+
+The Terraform wiring for this is not in the repository yet. The planned input shape in `components/inputs-optional.tf` is:
+
+```hcl
+variable "storage" {
+    description = "Object describing configuration around"
+    type = object({
+        replication_type  = optional(string, "LRS")
+        account_kind      = optional(string, "StorageV2")
+        retention_period  = optional(number, 7)
+        delete_after_days = optional(number, 30)
+    })
+}
+```
+
+Once implemented, engineers should expect:
+
+- `retention_period` to represent the short-term retention window used by the storage workflow
+- `delete_after_days` to control when the `BlobRetentionPolicy` lifecycle deletes older blobs automatically
+
+Until that Terraform change lands, this section is design intent only and not a statement of current deployed behaviour.
+
+## Manual testing
+
+Engineers can manually test FTPS uploads from the HMCTS jump boxes.
+
+- Nonprod: RDP to `JBox01-nonprod`
+- Prod: RDP to `jbox01-prod`
+
+From the relevant Windows jump box, use WinSCP to connect to the FTPS endpoint exposed by the Container App.
+
+The FTPS usernames and passwords should be taken from the environment Key Vault. Use the FTPS login credentials stored there for the environment you are testing, then connect with WinSCP and upload a test file into the FTPS upload directory.
+
+This gives engineers a practical end-to-end check that:
+
+- the client can reach the FTPS endpoint from the HMCTS estate
+- the Container App accepts FTPS authentication
+- uploaded files land in the FTPS service and can then be observed in the forwarding flow
+
+After uploading a test file, confirm the result through the application logs and, where appropriate, by checking whether the file reached the downstream SFTP target.
+
+Engineers can also connect to the destination system and watch files arrive there. This is useful as a direct confirmation that the forwarding step completed.
+
+Be aware that the destination system automatically moves received files to another location as part of its own processing. Because of that, a file may appear briefly in the observed landing location and then disappear shortly afterwards. That does not necessarily indicate a forwarding failure.
+
+It is also possible to inspect the Azure Storage Account directly when that is useful for troubleshooting or validation. To do that, engineers will usually need to request the appropriate access through `https://myaccess.microsoft.com/` and then add their current client IP address to the storage account allowed list.
+
+Treat that IP allowlist change as temporary. Running the deployment pipeline can remove the manually added IP address again, so access may need to be re-added after a pipeline run.
+
 ---
 
 ## Key configuration reference

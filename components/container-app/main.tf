@@ -12,6 +12,18 @@ data "azurerm_key_vault_secret" "ftps" {
   name         = each.value.key_vault_secret_name
 }
 
+# Email alert secrets are read separately so that they are never injected into
+# the container app as runtime secrets, and so that plans succeed when the
+# secrets have not yet been created by a core apply (e.g. during PR checks).
+# Setting maintenance_mode = true or monitoring.enabled = false skips the
+# lookup entirely, allowing plans to pass before core has been applied.
+data "azurerm_key_vault_secret" "ftps_alert_emails" {
+  for_each = (!var.maintenance_mode && var.monitoring.enabled) ? toset(var.monitoring.alert_email_secret_names) : toset([])
+
+  key_vault_id = data.azurerm_key_vault.this.id
+  name         = each.key
+}
+
 resource "azurerm_user_assigned_identity" "ftps_acr_pull" {
   name                = "${local.name_short}-acr-pull"
   location            = var.location
@@ -50,9 +62,11 @@ locals {
   ftps_monitoring_email_receivers = [
     for index, secret_name in var.monitoring.alert_email_secret_names : {
       name          = "email-${index + 1}"
-      email_address = data.azurerm_key_vault_secret.ftps["${data.azurerm_key_vault.this.id}|${secret_name}"].value
+      email_address = data.azurerm_key_vault_secret.ftps_alert_emails[secret_name].value
     }
-    if trimspace(data.azurerm_key_vault_secret.ftps["${data.azurerm_key_vault.this.id}|${secret_name}"].value) != "" && !endswith(lower(trimspace(data.azurerm_key_vault_secret.ftps["${data.azurerm_key_vault.this.id}|${secret_name}"].value)), ".invalid")
+    if contains(keys(data.azurerm_key_vault_secret.ftps_alert_emails), secret_name)
+    && trimspace(data.azurerm_key_vault_secret.ftps_alert_emails[secret_name].value) != ""
+    && !endswith(lower(trimspace(data.azurerm_key_vault_secret.ftps_alert_emails[secret_name].value)), ".invalid")
   ]
   ftps_no_replica_alert_enabled = !var.maintenance_mode && var.monitoring.enabled && length(local.ftps_monitoring_email_receivers) > 0
   ftps_demo_user_secrets = var.env != "nonprod" ? [] : [
@@ -106,13 +120,6 @@ locals {
         name                  = var.ftps.certificate_secret_name
         key_vault_id          = local.ftps_certificate_key_vault_id
         key_vault_secret_name = var.ftps.certificate_secret_name
-      }
-    ],
-    [
-      for secret_name in var.monitoring.alert_email_secret_names : {
-        name                  = secret_name
-        key_vault_id          = data.azurerm_key_vault.this.id
-        key_vault_secret_name = secret_name
       }
     ],
     [

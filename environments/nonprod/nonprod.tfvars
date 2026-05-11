@@ -7,7 +7,7 @@ address_space = {
 # Temporarily set to true so that the container-app plan does not attempt to
 # read the alert email Key Vault secrets before core apply has created them.
 # Remove this line and re-apply once core has been applied and the secrets exist.
-maintenance_mode = true
+# maintenance_mode = true
 
 hub = {
   next_hop_ip_address = "10.11.72.36"

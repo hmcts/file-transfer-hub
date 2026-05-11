@@ -4,6 +4,11 @@ address_space = {
   compute_subnet = ["10.11.63.64/26"]
 }
 
+# Temporarily set to true so that the container-app plan does not attempt to
+# read the alert email Key Vault secrets before core apply has created them.
+# Remove this line and re-apply once core has been applied and the secrets exist.
+maintenance_mode = true
+
 hub = {
   next_hop_ip_address = "10.11.72.36"
   vnet_name           = "hmcts-hub-nonprodi"

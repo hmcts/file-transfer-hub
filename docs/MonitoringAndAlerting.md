@@ -128,6 +128,69 @@ The output should list only the live addresses — no `unset@example.invalid` en
 
 ---
 
+## Setting up alerting in a new environment for the first time
+
+When a brand-new environment is deployed there is a sequencing constraint: the `container-app` Terraform reads the alert email secrets from Key Vault at plan time, but those secrets are not created until `core apply` runs. PR pipelines only run `plan` for both components, so a container-app plan against a fresh environment will fail with "KeyVault Secret does not exist" errors.
+
+The recommended approach is to deploy with alerting temporarily silenced, create the secrets, then enable alerting in a second apply.
+
+### Step 1 — Add `maintenance_mode = true` to the environment tfvars
+
+Add the following line at the top of `environments/<env>/<env>.tfvars` before raising the PR:
+
+```hcl
+# Temporarily set to true so that the container-app plan does not attempt to
+# read the alert email Key Vault secrets before core apply has created them.
+# Remove this line and re-apply once core has been applied and the secrets exist.
+maintenance_mode = true
+```
+
+PR plans will now pass because the email secret data source is skipped entirely when `maintenance_mode = true`.
+
+### Step 2 — Merge the PR and run the apply pipeline
+
+Once the PR is approved and merged, the apply pipeline will:
+
+1. Run `core apply` — this creates the three `ftps-alert-email-*` Key Vault secrets, each seeded with the placeholder value `unset@example.invalid`.
+2. Run `container-app apply` — alerting is skipped because `maintenance_mode = true`, so no secrets are read and no action group is created yet.
+
+### Step 3 — Set the real email addresses in Key Vault
+
+Using the portal or the CLI, update the secrets created by `core`:
+
+```bash
+az keyvault secret set \
+  --vault-name "file-tran-hub-<env>-kv" \
+  --name "ftps-alert-email-1" \
+  --value "engineer@justice.gov.uk"
+
+az keyvault secret set \
+  --vault-name "file-tran-hub-<env>-kv" \
+  --name "ftps-alert-email-2" \
+  --value "team-alerts@justice.gov.uk"
+```
+
+The third secret (`ftps-alert-email-3`) can be left with the placeholder value if only two recipients are needed.
+
+### Step 4 — Remove `maintenance_mode` and apply again
+
+Remove the `maintenance_mode = true` line from the tfvars file, commit, and push. The pipeline apply will re-read the Key Vault secrets and create the action group and metric alert with the real addresses.
+
+Alternatively, run the pipeline manually with `overrideAction = apply` and **Refresh alert email addresses only** ticked to avoid a full image rebuild.
+
+### Verifying the setup
+
+After the second apply, confirm the action group exists and holds the correct addresses:
+
+```bash
+az monitor action-group show \
+  --name "file-tran-hub-<env>-alerts" \
+  --resource-group "file-transfer-hub-<env>-rg" \
+  --query "emailReceivers[].emailAddress"
+```
+
+---
+
 ## Maintenance mode
 
 Setting `maintenance_mode = true` in an environment's tfvars file disables all monitoring and alerting resources for that environment. The action group and metric alert are not created (or are destroyed if they already exist), so no emails are sent while maintenance is in progress.

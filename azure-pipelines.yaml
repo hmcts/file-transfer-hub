@@ -23,6 +23,10 @@ parameters:
       - plan
       - apply
       - destroy
+  - name: refreshAlertsOnly
+    displayName: "Refresh alert email addresses only (skip image build)"
+    type: boolean
+    default: false
   - name: environment_components
     type: object
     default:
@@ -82,6 +86,8 @@ stages:
   - stage: AppBuildPublish
     displayName: "App Build & Publish"
     dependsOn: []
+    ${{ if eq(parameters.refreshAlertsOnly, true) }}:
+      condition: false
     jobs:
       - job: BuildAndPublish
         pool:
@@ -122,6 +128,11 @@ stages:
       - stage: ${{ deployment.deployment }}
         dependsOn: ${{ deployment.dependsOn }}
         ${{ if eq(deployment.component, 'container-app') }}:
+          condition: >-
+            and(
+              succeeded('${{ deployment.environment }}_core'),
+              in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
+            )
           variables:
             - name: log_analytics_workspace_id
               value: $[stageDependencies.${{ deployment.environment
@@ -134,6 +145,26 @@ stages:
             pool: hmcts-cftptl-agent-pool
             timeoutInMinutes: ${{ variables.timeoutInMinutes }}
             steps:
+              - ${{ if eq(deployment.component, 'container-app') }}:
+                  - task: AzureCLI@2
+                    displayName: "Resolve container app image"
+                    inputs:
+                      azureSubscription: ${{ deployment.service_connection }}
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: |
+                        REFRESH_ALERTS_ONLY="${{ parameters.refreshAlertsOnly }}"
+                        if [[ "${REFRESH_ALERTS_ONLY,,}" == "true" ]]; then
+                          echo "Refresh-alerts-only: looking up current container app image"
+                          CURRENT_IMAGE=$(az containerapp show \
+                            --name "hub-fth-ftps-server-${{ deployment.environment }}" \
+                            --resource-group "file-transfer-hub-${{ deployment.environment }}-rg" \
+                            --query "properties.template.containers[0].image" --output tsv)
+                          echo "Resolved image: $CURRENT_IMAGE"
+                          echo "##vso[task.setvariable variable=container_app_image]$CURRENT_IMAGE"
+                        else
+                          echo "##vso[task.setvariable variable=container_app_image]hmctsprod.azurecr.io/$(imageRepository):$(Build.BuildId)"
+                        fi
               - template: steps/terraform.yaml@cnp-azuredevops-libraries
                 parameters:
                   overrideAction: ${{ parameters.overrideAction }}
@@ -151,7 +182,7 @@ stages:
                       -var
                       "container_apps_subnet_id=$(container_apps_subnet_id)"
                       -var
-                      "container_app_image=hmctsprod.azurecr.io/$(imageRepository):$(Build.BuildId)"
+                      "container_app_image=$(container_app_image)"
               - ${{ if eq(deployment.component, 'core') }}:
                   - task: AzureCLI@2
                     name: terraformOutputs

@@ -2,6 +2,7 @@ locals {
   enable_storage_sftp_test_target = var.env != "prod"
   storage_sftp_host               = "${module.storage.storageaccount_name}.blob.core.windows.net"
   storage_sftp_username           = "${module.storage.storageaccount_name}.${var.ftps.storage_sftp_user}"
+  monitoring_email_placeholder    = "unset@example.invalid"
   generated_forward_target = length(var.ftps.forward_targets) > 0 ? {
     username_secret_name = coalesce(try(var.ftps.forward_targets[0].username_secret_name, null), var.ftps.storage_sftp_user_secret_name)
     password_secret_name = coalesce(try(var.ftps.forward_targets[0].password_secret_name, null), var.ftps.storage_sftp_password_secret_name)
@@ -69,4 +70,16 @@ resource "azurerm_key_vault_secret" "ftps_storage_sftp_password" {
   value        = azurerm_storage_account_local_user.ftps_forwarder[0].password
   key_vault_id = azurerm_key_vault.this.id
   content_type = "text/plain"
+}
+
+resource "azurerm_key_vault_secret" "ftps_alert_email" {
+  for_each     = toset(var.monitoring.alert_email_secret_names)
+  name         = each.value
+  value        = local.monitoring_email_placeholder
+  key_vault_id = azurerm_key_vault.this.id
+  content_type = "text/plain"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }

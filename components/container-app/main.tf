@@ -12,6 +12,18 @@ data "azurerm_key_vault_secret" "ftps" {
   name         = each.value.key_vault_secret_name
 }
 
+# Email alert secrets are read separately so that they are never injected into
+# the container app as runtime secrets, and so that plans succeed when the
+# secrets have not yet been created by a core apply (e.g. during PR checks).
+# Setting maintenance_mode = true or monitoring.enabled = false skips the
+# lookup entirely, allowing plans to pass before core has been applied.
+data "azurerm_key_vault_secret" "ftps_alert_emails" {
+  for_each = (!var.maintenance_mode && var.monitoring.enabled) ? toset(var.monitoring.alert_email_secret_names) : toset([])
+
+  key_vault_id = data.azurerm_key_vault.this.id
+  name         = each.key
+}
+
 resource "azurerm_user_assigned_identity" "ftps_acr_pull" {
   name                = "${local.name_short}-acr-pull"
   location            = var.location
@@ -26,9 +38,37 @@ resource "azurerm_role_assignment" "ftps_acr_pull" {
   principal_id         = azurerm_user_assigned_identity.ftps_acr_pull.principal_id
 }
 
+resource "azurerm_monitor_action_group" "ftps_container_health" {
+  count               = local.ftps_no_replica_alert_enabled ? 1 : 0
+  name                = "${local.name_short}-alerts"
+  resource_group_name = "${local.name}-rg"
+  short_name          = "fthalerts"
+  tags                = module.ctags.common_tags
+
+  dynamic "email_receiver" {
+    for_each = local.ftps_monitoring_email_receivers
+
+    content {
+      name                    = email_receiver.value.name
+      email_address           = email_receiver.value.email_address
+      use_common_alert_schema = true
+    }
+  }
+}
+
 locals {
   acr_registry_id               = "/subscriptions/${var.acr.subscription_id}/resourceGroups/${var.acr.resource_group_name}/providers/Microsoft.ContainerRegistry/registries/${var.acr.name}"
   ftps_certificate_key_vault_id = coalesce(var.ftps.certificate_key_vault_id, data.azurerm_key_vault.this.id)
+  ftps_monitoring_email_receivers = [
+    for index, secret_name in var.monitoring.alert_email_secret_names : {
+      name          = "email-${index + 1}"
+      email_address = data.azurerm_key_vault_secret.ftps_alert_emails[secret_name].value
+    }
+    if contains(keys(data.azurerm_key_vault_secret.ftps_alert_emails), secret_name)
+    && trimspace(data.azurerm_key_vault_secret.ftps_alert_emails[secret_name].value) != ""
+    && !endswith(lower(trimspace(data.azurerm_key_vault_secret.ftps_alert_emails[secret_name].value)), ".invalid")
+  ]
+  ftps_no_replica_alert_enabled = !var.maintenance_mode && var.monitoring.enabled && length(local.ftps_monitoring_email_receivers) > 0
   ftps_demo_user_secrets = var.env != "nonprod" ? [] : [
     {
       name                  = "ho-moj-ftps-demo-username"
@@ -389,5 +429,31 @@ resource "azapi_update_resource" "ftps_passive_ports" {
         ]
       }
     }
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "ftps_no_replicas" {
+  count               = local.ftps_no_replica_alert_enabled ? 1 : 0
+  name                = "${local.name}-ftps-no-replicas"
+  resource_group_name = "${local.name}-rg"
+  scopes              = [module.container_app.container_app_ids["ftps-server"]]
+  description         = "Alert when the FTPS container app has no active replicas. Azure Container Apps does not expose a ready replica metric, so this alert uses the Replica count metric as the closest supported signal."
+  severity            = var.monitoring.no_replica_alert_severity
+  enabled             = true
+  auto_mitigate       = true
+  frequency           = var.monitoring.no_replica_alert_frequency
+  window_size         = var.monitoring.no_replica_alert_window_size
+  tags                = module.ctags.common_tags
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerapps"
+    metric_name      = "Replicas"
+    aggregation      = "Maximum"
+    operator         = "LessThan"
+    threshold        = 1
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.ftps_container_health[0].id
   }
 }

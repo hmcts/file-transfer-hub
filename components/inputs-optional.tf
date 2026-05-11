@@ -37,6 +37,24 @@ variable "acr" {
   default = {}
 }
 
+variable "maintenance_mode" {
+  description = "When true, all monitoring and alerting resources are disabled. Set in the environment tfvars while the environment is under active development or planned maintenance."
+  type        = bool
+  default     = false
+}
+
+variable "monitoring" {
+  description = "Azure Monitor alert configuration for the FTPS container app."
+  type = object({
+    enabled                      = optional(bool, true)
+    alert_email_secret_names     = optional(list(string), ["ftps-alert-email-1", "ftps-alert-email-2", "ftps-alert-email-3"])
+    no_replica_alert_frequency   = optional(string, "PT5M")
+    no_replica_alert_window_size = optional(string, "PT5M")
+    no_replica_alert_severity    = optional(number, 1)
+  })
+  default = {}
+}
+
 variable "ftps" {
   type = object({
     certificate_common_name     = optional(string, "ftps.local")

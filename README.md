@@ -16,6 +16,7 @@ The FTPS runtime expects these Key Vault secrets to exist:
 - `ftps-local-password`: password used by the external FTPS client to log in
 - `ho-moj-ftps-demo-username`: nonprod-only additional FTPS username read from the main service Key Vault
 - `ho-moj-ftps-demo-password`: nonprod-only additional FTPS password read from the main service Key Vault
+- `ftps-alert-email-1`, `ftps-alert-email-2`, `ftps-alert-email-3`: alert recipient placeholders used by the container-app monitoring action group; Terraform creates these with a non-routable placeholder value and operators should update the secret values in Key Vault with the real recipient addresses
 - per-forward-target username/password secrets referenced from `ftps.forward_targets[*].username_secret_name` and `ftps.forward_targets[*].password_secret_name`
 - `ftps-certificate-pem`: FTPS server certificate in PEM format, a combined PEM bundle, or a base64-encoded PKCS#12 bundle. Combined content must include a leaf certificate that matches the private key.
 - `ftps-certificate-key-pem`: FTPS server private key in PEM format when the certificate secret is not already a combined PEM or PKCS#12 bundle
@@ -48,6 +49,7 @@ Until the real downstream SFTP server is available, nonprod uses the project sto
 
 - [FTPS Container — local build, smoke test, and environment variables](app/README.md)
 - [File Handling — upload flow, forwarding loop, deduplication, and ephemeral storage risk](docs/FileHandling.md)
+- [Monitoring and Alerting — zero-replica alert, sensitivity tuning, and email recipient management](docs/MonitoringAndAlerting.md)
 - [Networking — FTPS ingress, passive ports, and downstream SFTP paths](docs/Networking.md)
 - [Certificates — Let's Encrypt renewal and per-environment Key Vault references](docs/certificates.md)
 - [Troubleshooting — BAU log access, KQL queries, and common issues](docs/Troubleshooting.md)

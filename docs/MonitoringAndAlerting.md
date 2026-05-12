@@ -23,6 +23,19 @@ Azure Container Apps does not expose a "ready replica" metric directly. The aler
 
 The alert resource is named `file-transfer-hub-<env>-ftps-no-replicas` and the action group is named `file-tran-hub-<env>-alerts`.
 
+## When the email alert fires
+
+With the default settings, Azure Monitor evaluates the rule every `5 minutes` and looks back over the previous `5 minutes`.
+
+That means if the FTPS container drops to zero replicas and stays there, the alert will normally fire on the next evaluation cycle, typically within **up to 5 minutes** of the failure.
+
+The rule is configured with `auto_mitigate = true`, so Azure Monitor does not treat this as a brand-new alert every 5 minutes forever. Instead, the usual behaviour is:
+
+- Azure raises the alert when the condition is first detected.
+- The alert remains active while the replica count stays below `1`.
+- Azure may send a resolution notification when the container recovers, depending on notification handling in Azure Monitor.
+- If the container recovers and later fails again, Azure can raise a new alert for that new failure.
+
 ---
 
 ## Adjusting sensitivity
@@ -107,7 +120,13 @@ Run the pipeline from the Azure DevOps UI:
 4. Tick **Refresh alert email addresses only (skip image build)**.
 5. Run.
 
-With that flag set, the image build stage is skipped, the `core` stage runs as a no-op, and the `container-app` apply updates the action group without touching the running container.
+The **Refresh alert email addresses only (skip image build)** switch maps to the `refreshAlertsOnly` pipeline parameter. When it is enabled:
+
+- the Docker image build stage is skipped
+- the pipeline keeps the currently deployed container image instead of trying to deploy a new build
+- the `container-app` Terraform apply re-reads the Key Vault secrets and updates only the action group / alert configuration
+
+Use this switch when you only want to add, remove, or change alert recipients, or when you want to re-enable alerting after first-time setup without rebuilding the FTPS image.
 
 **Option B — Wait for the next merge to main**
 
@@ -176,7 +195,7 @@ The third secret (`ftps-alert-email-3`) can be left with the placeholder value i
 
 Remove the `maintenance_mode = true` line from the tfvars file, commit, and push. The pipeline apply will re-read the Key Vault secrets and create the action group and metric alert with the real addresses.
 
-Alternatively, run the pipeline manually with `overrideAction = apply` and **Refresh alert email addresses only** ticked to avoid a full image rebuild.
+Alternatively, run the pipeline manually with `overrideAction = apply` and **Refresh alert email addresses only (skip image build)** ticked. This uses the `refreshAlertsOnly` switch to skip the image build, keep the current running image, and apply only the alerting changes.
 
 ### Verifying the setup
 

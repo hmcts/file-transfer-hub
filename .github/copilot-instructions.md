@@ -32,6 +32,8 @@
 - Be careful when reasoning about Key Vault access policy drift in `components/core`: plans can differ between a local user and the Azure DevOps principal because the policy includes `data.azurerm_client_config.current.object_id`.
 - For local Terraform validation, do not edit tracked Terraform files such as `provider.tf` to disable backends or otherwise work around local environment issues. If a temporary local-only workaround is unavoidable, use a copied file in a temporary location or a `.bak` restore pattern that is guaranteed to restore the tracked file before finishing.
 - Keep local Terraform scratch state out of the working tree when possible. If you use `TF_DATA_DIR` or any temporary init directory such as `.terraform_tmp`, remove it before finishing and before any commit or push.
+- If `terraform` is managed through `tfenv`, confirm the local `tfenv` configuration resolves a version before attempting repo validation. A local failure like `tfenv: [ERROR] Version could not be resolved (set by ~/.config/tfenv/version or tfenv use <version>)` is an environment blocker, not a repository defect; report it and stop rather than changing repo files to work around it.
+- For local prod Terraform validation against the shared remote backend, Azure `Contributor` access to the storage account is not sufficient. Local backend init requires either `Microsoft.Storage/storageAccounts/listKeys/action` or a blob data-plane role such as `Storage Blob Data Contributor` on the Terraform state storage account; if those permissions are blocked by prod policy, stop and use the Azure DevOps PR pipeline plan instead of retrying local workarounds.
 - If local `terraform plan` is blocked by missing Azure authentication, subscription context, or inaccessible remote resources, stop after the narrowest successful validation, report the exact blocker, and do not keep mutating repo files in an attempt to force the plan to run.
 - After any local Terraform validation flow that touches temporary files, explicitly verify workspace hygiene with `git status` and restore any tracked files before considering the task complete.
 
@@ -39,6 +41,7 @@
 
 - Any change to Terraform files must be validated with `terraform plan` before the task is complete.
 - When a fully representative local `terraform plan` is not possible because required Azure credentials or target resources are unavailable, capture the closest successful local validation, state the blocker clearly, and prefer pipeline validation over risky local workarounds.
+- When prod remote-state RBAC blocks local `terraform init` or `terraform plan`, treat the PR pipeline plan as the primary validation path rather than repeatedly retrying local prod access.
 
 For init use:
 ```

@@ -1,70 +1,101 @@
 # Copilot Instructions
 
-## Repository Scope
+## Repository Context
 
-- This repository contains both the FTPS application image and the Terraform that deploys it to Azure Container Apps; keep application, infrastructure, and documentation changes in sync when a runtime contract changes.
-- Treat `app/` as the FTPS image source of truth, `components/core` as the shared Azure infrastructure layer, `components/container-app` as the FTPS Azure Container Apps deployment layer, `environments/` as the per-environment override source, and `docs/` as the operational reference.
-- Prefer putting environment-specific behavior in `environments/*.tfvars` or existing Terraform inputs rather than hardcoding nonprod or prod branches into scripts or app code.
+### Repository Scope
 
-## FTPS Image And Local Validation
+- This repository contains both the FTPS application image and the Terraform that deploys it to Azure Container Apps; the FTPS service accepts uploads over FTPS and forwards them to one or more SFTP targets, so keep application, infrastructure, and documentation changes in sync when that runtime contract changes.
+- At a high level, `app/` contains the FTPS application image, `components/core` owns shared infrastructure, `components/container-app` owns FTPS runtime wiring, and `environments/` provides per-environment overrides.
 
-- Treat `app/` as the FTPS image source of truth.
-- Any change to the FTPS image runtime, startup, TLS handling, forwarding behavior, Dockerfile, or compose wiring must pass `make test` in the `app/` folder before the task is complete.
-- Do not treat an image-only change as done based only on `docker build`; the FTPS startup and FTPS-to-SFTP forwarding smoke test must pass.
+### FTPS Runtime And Testing
+
+- Any change to the FTPS application in `app/` that can affect runtime behavior must pass `make test` before the task is complete. Do not treat an image-only change as done based only on `docker build`.
 - Leave the local smoke environment clean when you are done. If you ran the test manually or interrupted it during debugging, bring `ftps-local-smoke` down before considering the task finished.
-- Use `app/docker-compose.yaml` as the single local runtime for both manual FTPS-to-SFTP checks and the smoke test. Do not reintroduce a separate local test overlay unless there is a concrete need that cannot be handled in the base compose file.
-- Keep the local compose stack disposable: the FTPS upload area and ProFTPD logs should remain on `tmpfs`, and the local SFTP sidecar should remain part of the default local stack.
-- Keep `app/Makefile` aligned with the documented local workflows. When changing the local run or test flow, update the relevant `make` targets in the same change.
 - Keep the manual local flow self-contained: `make up` should be able to bootstrap any minimal ignored local configuration it needs, while `app/test-local-ftps.sh` should remain deterministic and should not depend on user-specific local `.env` state.
-- Preserve the current implicit FTPS model on port `990`. If you change the passive FTPS port range or ingress behavior, update compose, Terraform, tests, and docs together.
-- All shell scripts in `app/` use `set -euo pipefail` and require `bash` (not `sh`). Follow this convention when adding or modifying scripts.
 - `test-local-ftps.sh` sets its own `FTPS_LOCAL_PASSWORD` per test case internally; any value the caller exports is intentionally overridden. Do not debug password mismatches by changing the caller's environment.
-- When adding a new runtime feature, configuration path, or entrypoint behavior, add test coverage to `test-local-ftps.sh` — either by extending an existing case with additional assertions or by adding a new named case when the feature requires distinct compose configuration. Do not rely solely on existing cases passing to validate new behavior.
 
-## Terraform And Environment Expectations
+### Terraform And Environment Expectations
 
 - Treat `components/core` and `components/container-app` as separate deployment units with a defined contract: core owns shared infrastructure and outputs, while container-app consumes those outputs and wires the FTPS runtime.
-- Keep shared Terraform inputs aligned across `components/inputs-required.tf`, `components/inputs-optional.tf`, and the component-specific input files when changing the infrastructure contract.
-- `components/container-app` owns the FTPS Key Vault secret reads, ACR pull identity, and the `azapi` patching used for registry auth and passive port exposure. Do not remove or bypass that behavior without verifying the resulting Azure Container Apps configuration.
-- Prefer the existing `acr` inputs and environment tfvars for registry configuration rather than introducing new hardcoded registry identifiers or redundant discovery logic.
-- Nonprod currently uses the project storage account as a temporary SFTP forwarding target when `ftps.storage_sftp_host` is unset. Preserve that fallback unless you are intentionally changing the nonprod integration model.
-- Prod does not auto-create the FTPS runtime secrets. If you change secret names, secret requirements, or certificate inputs, keep the root README and deployment expectations accurate and do not assume Terraform will backfill prod secrets.
+- Prod does not auto-create the FTPS runtime secrets but nonprod does.
 - Be careful when reasoning about Key Vault access policy drift in `components/core`: plans can differ between a local user and the Azure DevOps principal because the policy includes `data.azurerm_client_config.current.object_id`.
-- For local Terraform validation, do not edit tracked Terraform files such as `provider.tf` to disable backends or otherwise work around local environment issues. If a temporary local-only workaround is unavoidable, use a copied file in a temporary location or a `.bak` restore pattern that is guaranteed to restore the tracked file before finishing.
-- Keep local Terraform scratch state out of the working tree when possible. If you use `TF_DATA_DIR` or any temporary init directory such as `.terraform_tmp`, remove it before finishing and before any commit or push.
-- If local `terraform plan` is blocked by missing Azure authentication, subscription context, or inaccessible remote resources, stop after the narrowest successful validation, report the exact blocker, and do not keep mutating repo files in an attempt to force the plan to run.
-- After any local Terraform validation flow that touches temporary files, explicitly verify workspace hygiene with `git status` and restore any tracked files before considering the task complete.
 
-# Terraform Plan Validation
+### Pipeline And Image Promotion
 
-- Any change to Terraform files must be validated with `terraform plan` before the task is complete.
-- When a fully representative local `terraform plan` is not possible because required Azure credentials or target resources are unavailable, capture the closest successful local validation, state the blocker clearly, and prefer pipeline validation over risky local workarounds.
+- The Azure pipeline builds and publishes the FTPS image from `app/` with `az acr build` to `hmctsprod.azurecr.io/file-transfer-hub/ftps-server`.
+- Keep the nonprod container-app deployment dependency model intact: it depends on both the core Terraform outputs and the app image build.
 
-For init use:
-```
+## Engineering Workflow
+
+### Maintainability
+
+- Write code that is maintainable, human-readable, and easy to reason about.
+- Apply practical Clean Code principles where they fit the language: clear naming, small focused functions or units, straightforward control flow, and explicit error handling and intent.
+- Prefer single-purpose scripts, modules, and functions. Keep responsibilities narrow and avoid combining unrelated behavior in one unit when a smaller focused abstraction would be clearer.
+- Avoid dense one-liners, hidden side effects, and unnecessary indirection.
+
+### Tooling And Validation Preconditions
+
+- Use the repository's chosen tools and workflows when they exist; do not silently substitute different tools.
+- If a required local tool is missing, the available version does not satisfy the repository requirements, or a validation command cannot run because of a local environment issue, stop at the narrowest failed validation and report the exact blocker instead of working around it by changing tracked files or switching tools.
+
+### Documentation And Operational Notes
+
+- After any change, verify that the relevant README files, documentation, and workflow-facing Makefiles do not contain claims that are now stale; update them in the same change if they do.
+- If a change introduces a new language, propose formatter, lint, and syntax-check tools for user approval, then update the relevant Make targets and instructions once approved.
+- Supported repeatable local workflows should be accessible via Make targets. Keep the repository Makefiles as the canonical entry points for local quality checks, local runtime workflows and tests.
+- Keep `.github/copilot-instructions.md` aligned with the current codebase. If a change renames files, targets, variables, commands, or workflows referenced there, update the instructions in the same change so repo-specific guidance stays accurate.
+- If a change introduces new generated files, local runtime artifacts, or secrets that should not be committed, update the relevant `.gitignore` in the same change and keep local workflows self-contained.
+
+## Technology And Validation Standards
+
+### Shell Script Standards
+
+- Shell scripts are formatted with `shfmt`, linted with `shellcheck`, and syntax-checked with `bash -n`.
+- For shell scripts use `bash` with `set -euo pipefail`.
+
+### Terraform Standards
+
+- Terraform code is checked with `terraform fmt` and `terraform validate`.
+- Prefer input variables and environment configuration files over hardcoded environment-specific logic.
+- Follow the existing Terraform module, variable, and environment configuration patterns already used in the repository.
+
+### Makefile Standards
+
+- Makefiles are linted with `checkmake` using the repo-level `checkmake.ini`.
+- Keep the root Makefile focused on repo-level orchestration. For new non-Terraform apps or components, add workflow targets in a local Makefile and delegate from the root only when needed.
+
+## Other Standards
+
+- Markdown documentation is formatted and linted with `rumdl`, with the line-length rule disabled in the repo-level `.rumdl.toml`.
+
+### Local Quality Gates
+
+- Use the repository's existing conventions and Make targets as the source of truth for formatting, linting, validation, and tests.
+- For documentation-only changes, run `make fmt-docs` and `make check-docs` from the repository root before considering the task complete.
+- For changes that modify tracked non-documentation files covered by the repository quality gates, run `make verify` from the repository root before considering the task complete. This includes mixed code-and-documentation changes.
+- Keep the local quality gates aligned with the repository structure. If you add new validated code, infrastructure, workflow, or documentation surfaces, update the relevant Makefile targets in the same change so the appropriate check targets continue to cover them.
+- Do not report a task as complete while the relevant required quality targets are failing. If a required check is blocked by a missing local dependency or environment issue, report the exact blocker and stop at the narrowest successful validation.
+
+### Full Verification
+
+- When the repository exposes a root `make verify` target, treat it as the full local verification flow that combines formatting, the required quality gates, and test entry points.
+- When the repository exposes a root `make ci_verify` target, treat it as the CI-safe non-mutating verification flow that should run in pipelines.
+
+### Terraform Plan Validation
+
+- Do not run `terraform plan` by default for Terraform changes. Run `terraform plan` only when the user explicitly asks for it, because these commands target real Azure infrastructure.
+- When the user explicitly asks for `terraform plan`, use the repo-approved parameters below for the target environment or component instead of inventing alternatives.
+- If a fully representative local `terraform plan` is not possible because required Azure credentials or target resources are unavailable, capture the closest successful local validation, state the blocker clearly, prefer pipeline validation over risky local workarounds, and do not keep mutating tracked repo files in an attempt to force the plan to run.
+
+Use these parameters for `terraform init`:
+
+```text
 -backend-config=storage_account_name=cfb084706949aac66ba5csa -backend-config=container_name=subscription-tfstate -backend-config='key=UK South/hub/file-transfer-hub/nonprod/core/terraform.tfstate' -backend-config=resource_group_name=azure-control-stg-rg -backend-config=subscription_id=04d27a32-7a07-48b3-95b8-3c8691e1a263
 ```
 
-For validating plan use (change env or component if needed):
+Use these parameters for `terraform plan` (adjust env if needed):
+
+```text
+-var env=nonprod -var builtFrom=hmcts/file-transfer-hub -var product=hub -var-file file-transfer-hub/environments/nonprod/nonprod.tfvars -lock=false -detailed-exitcode
 ```
--var env=nonprod -var builtFrom=hmcts/file-transfer-hub -var product=hub -var-file /azp/_work/1/s/file-transfer-hub/environments/nonprod/nonprod.tfvars -lock=false -detailed-exitcode
-```
-
-## Pipeline And Image Promotion
-
-- The Azure pipeline builds and publishes the FTPS image from `app/` with `az acr build` to `hmctsprod.azurecr.io/file-transfer-hub/ftps-server`.
-- Preserve the current image tagging convention unless there is a deliberate rollout change: build ID, branch name, and branch-plus-build-ID tags are all published.
-- Keep the nonprod container-app deployment dependency model intact: it depends on both the core Terraform outputs and the app image build.
-
-## Documentation And Operational Notes
-
-- After any change, verify that `app/README.md`, the root `README.md`, and `docs/certificates.md` do not contain claims that are now stale; update them in the same change if they do.
-- If an image change alters the local test workflow or runtime expectations, update `app/README.md` in the same change.
-- If a change adds, removes, renames, or changes the behavior of `app/Makefile` local workflow targets, update `app/README.md` in the same change.
-- If a change affects Key Vault secret requirements, environment behavior, or the nonprod forwarding model, update the root `README.md` in the same change.
-- If a change affects certificate names, DNS names, Key Vault ownership, or certificate renewal expectations, update `docs/certificates.md` in the same change.
-
-## Git Safety
-
-- Before any commit, push, rebase, cherry-pick, merge, or branch-management step, check `git status` for in-progress operations. If a cherry-pick, rebase, or merge is already active and the user did not explicitly ask to continue or abort it, stop and ask rather than guessing.
-- Do not leave behind Git sequencer state, temporary backup files, or validation artifacts when finishing a task.

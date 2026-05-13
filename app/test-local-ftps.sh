@@ -23,7 +23,6 @@ CERTS_DIR=""
 CURRENT_CERTIFICATE_PATH=""
 SELECTED_CASES=()
 CASE_RESULTS=()
-FORWARD_TARGET_SERVICES=(sftp-target sftp-target-2)
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
     COLOR_RED=$'\033[31m'
@@ -136,10 +135,10 @@ parse_args() {
 
     for case_name in "$@"; do
         case "${case_name}" in
-            -h|--help)
-                show_usage
-                exit 0
-                ;;
+        -h | --help)
+            show_usage
+            exit 0
+            ;;
         esac
 
         validate_case_name "${case_name}" || exit 1
@@ -168,6 +167,7 @@ cleanup_known_smoke_projects() {
     done
 }
 
+# shellcheck disable=SC2329
 cleanup() {
     if [[ "${PRESERVE_STACK}" == "true" ]]; then
         echo "Preserving local smoke stack for inspection" >&2
@@ -256,7 +256,7 @@ prepare_pem_case() {
         -out "${CERTS_DIR}/server.crt" \
         -sha256 -days 1 -nodes \
         -subj '/CN=ftps.local' >/dev/null 2>&1
-    cat "${CERTS_DIR}/server.key" "${CERTS_DIR}/server.crt" > "${CERTS_DIR}/ftps.pem"
+    cat "${CERTS_DIR}/server.key" "${CERTS_DIR}/server.crt" >"${CERTS_DIR}/ftps.pem"
 
     export FTPS_CERTS_DIR="${CERTS_DIR}"
     unset FTPS_CERTIFICATE_PEM
@@ -317,9 +317,13 @@ prepare_pkcs12_chain_case() {
             -passout pass: >/dev/null 2>&1
     fi
 
+    local certificate_bundle
+
+    certificate_bundle="$(base64_no_wrap "${bundle_file}")"
+
     export FTPS_CERTS_DIR="${CERTS_DIR}"
     export FTPS_CERTIFICATE_PATH="/etc/proftpd/tls/ftps.pem"
-    export FTPS_CERTIFICATE_PEM="$(base64_no_wrap "${bundle_file}")"
+    export FTPS_CERTIFICATE_PEM="${certificate_bundle}"
     unset FTPS_CERTIFICATE_KEY_PEM
     unset FTPS_CERTIFICATE_PKCS12_PASSWORD
 
@@ -387,19 +391,19 @@ run_smoke_case() {
     mkdir -p "${case_dir}"
 
     case "${case_name}" in
-        pem)
-            prepare_pem_case "${case_dir}" || return 1
-            ;;
-        pem-special-target-password)
-            prepare_pem_special_target_password_case "${case_dir}" || return 1
-            ;;
-        pkcs12-chain)
-            prepare_pkcs12_chain_case "${case_dir}" || return 1
-            ;;
-        *)
-            echo "Unknown smoke test case: ${case_name}" >&2
-            return 1
-            ;;
+    pem)
+        prepare_pem_case "${case_dir}" || return 1
+        ;;
+    pem-special-target-password)
+        prepare_pem_special_target_password_case "${case_dir}" || return 1
+        ;;
+    pkcs12-chain)
+        prepare_pkcs12_chain_case "${case_dir}" || return 1
+        ;;
+    *)
+        echo "Unknown smoke test case: ${case_name}" >&2
+        return 1
+        ;;
     esac
 
     cleanup_known_smoke_projects
@@ -413,17 +417,17 @@ run_smoke_case() {
     fi
 
     case "${case_name}" in
-        pem|pem-special-target-password)
-            assert_certificate_blocks 1 1 || return 1
-            assert_presented_certificate_count 1 || return 1
-            ;;
-        pkcs12-chain)
-            assert_certificate_blocks 1 2 || return 1
-            assert_presented_certificate_count 2 || return 1
-            ;;
+    pem | pem-special-target-password)
+        assert_certificate_blocks 1 1 || return 1
+        assert_presented_certificate_count 1 || return 1
+        ;;
+    pkcs12-chain)
+        assert_certificate_blocks 1 2 || return 1
+        assert_presented_certificate_count 2 || return 1
+        ;;
     esac
 
-    printf '%s\n' "${TEST_PAYLOAD}" > "${UPLOAD_FILE}"
+    printf '%s\n' "${TEST_PAYLOAD}" >"${UPLOAD_FILE}"
     curl -k --silent --show-error --ssl-reqd \
         --user "ftpssvc:${FTPS_LOCAL_PASSWORD}" \
         --ftp-pasv \

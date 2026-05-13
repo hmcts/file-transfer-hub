@@ -211,7 +211,7 @@ See [docs/certificates.md](certificates.md) for the full certificate reference. 
 
 If you see a log line such as:
 
-```
+```text
 ProFTPD killed (signal 15)
 ProFTPD 1.3.x standalone mode SHUTDOWN
 ```
@@ -220,7 +220,7 @@ in `ContainerAppConsoleLogs_CL`, this is **not a bug or crash**. Signal 15 (SIGT
 
 From the container's own app log you will also see:
 
-```
+```text
 [ftps-entrypoint] Received SIGTERM - container is shutting down gracefully. Check Azure Container Apps system logs for details.
 ```
 

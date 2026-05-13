@@ -117,10 +117,16 @@ Useful local targets:
 - `make connect`: open an interactive shell in the running local FTPS container created by `make up`
 - `make down`: stop and remove the local FTPS-plus-SFTP-targets stack
 - `make test`: run the automated FTPS-to-SFTP smoke test with temporary certs and automatic cleanup
+- `make fmt`: format the tracked Bash scripts with `shfmt`
+- `make fmt-check`: check for `shfmt` formatting drift in the tracked Bash scripts
+- `make lint`: lint the tracked Bash scripts with `shellcheck`
+- `make validate`: run `bash -n` syntax checks across the tracked Bash scripts
 
 The compose file mounts `./certs/ftps.pem` into the container and exposes the full FTPS passive range. The smoke test does not reuse this directory; it creates a temporary cert directory under `app/`, mounts that for the test run, and removes it on exit so manual cert files are left alone.
 
 Use `make up` when you want to inspect the local FTPS-to-SFTP forwarding stack interactively. Use `make connect` to open a shell in the running FTPS container from that stack. Use `make test` when you want a repeatable pass/fail check after image changes, including fan-out copies to both local targets.
+
+Use `make fmt`, `make fmt-check`, `make lint`, and `make validate` when you want fast local script hygiene checks without starting the Docker smoke stack.
 
 If no local FTPS container is running, `make connect` exits with:
 
@@ -134,6 +140,11 @@ For manual local runs, the default login is:
 - password: `localpass123!` unless you changed `app/.env`
 
 The automated smoke test does not read the manual password from `app/.env`; it forces its own fixed test password internally so it stays deterministic.
+
+## Shell Script Standards
+
+- App shell scripts use `bash` with `set -euo pipefail`.
+- Script changes should remain `shfmt`-clean, `shellcheck`-clean, and `bash -n` clean.
 
 ## Environment Variables
 
@@ -153,6 +164,7 @@ When `FTPS_CERTIFICATE_PEM` does not contain PEM markers, the container treats i
 When PEM content is injected directly, startup applies the same normalization and now fails early if the secret content does not include both a private key and a certificate that matches that key.
 
 After startup has a normalized PEM bundle, it derives a dedicated ProFTPD server certificate file and, when additional certificates are present, a certificate-chain file so FTPS clients receive the intermediate chain.
+
 - `FTPS_PASSIVE_MIN_PORT`: First passive FTPS data port
 - `FTPS_PASSIVE_MAX_PORT`: Last passive FTPS data port
 - `FTPS_ENABLE_STORAGE_FORWARD`: Enables the background SFTP forwarding loop

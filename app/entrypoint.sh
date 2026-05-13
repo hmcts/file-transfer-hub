@@ -98,7 +98,7 @@ chown "${FTPS_LOCAL_USER}:${FTPS_SHARED_GROUP}" "${FTPS_LOCAL_UPLOAD_DIR}"
 chown root:"${FTPS_SHARED_GROUP}" "${FTPS_LOCAL_DOWNLOAD_DIR}"
 chmod 0550 "${FTPS_LOCAL_DOWNLOAD_DIR}"
 
-cat > "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt" <<EOF
+cat >"${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt" <<EOF
 HMCTS FTPS service
 
 Upload files into the upload directory.
@@ -107,7 +107,7 @@ EOF
 chown root:"${FTPS_SHARED_GROUP}" "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt"
 chmod 0440 "${FTPS_LOCAL_DOWNLOAD_DIR}/README.txt"
 
-printf '%s\n' "${FTPS_WELCOME_MESSAGE}" > "${FTPS_BANNER_PATH}"
+printf '%s\n' "${FTPS_WELCOME_MESSAGE}" >"${FTPS_BANNER_PATH}"
 chown root:root "${FTPS_BANNER_PATH}"
 chmod 0644 "${FTPS_BANNER_PATH}"
 
@@ -126,17 +126,17 @@ FTPS_RUNTIME_GROUP="${FTPS_CERTIFICATE_GROUP}"
 FTPS_AUTH_GROUP_ID="$(id -g "${FTPS_LOCAL_USER}")"
 export FTPS_TLS_CHAIN_DIRECTIVE=""
 
-cat > "${FTPS_AUTH_USER_FILE}" <<EOF
+cat >"${FTPS_AUTH_USER_FILE}" <<EOF
 ${FTPS_LOCAL_USER}:${FTPS_LOCAL_PASSWORD_HASH}:$(id -u "${FTPS_LOCAL_USER}"):${FTPS_AUTH_GROUP_ID}::${FTPS_LOCAL_ROOT}:/bin/bash
 EOF
 
 if [[ -n "${FTPS_ADDITIONAL_USER}" ]]; then
-    cat >> "${FTPS_AUTH_USER_FILE}" <<EOF
+    cat >>"${FTPS_AUTH_USER_FILE}" <<EOF
 ${FTPS_ADDITIONAL_USER}:${FTPS_ADDITIONAL_PASSWORD_HASH}:$(id -u "${FTPS_ADDITIONAL_USER}"):${FTPS_AUTH_GROUP_ID}::${FTPS_LOCAL_ROOT}:/bin/bash
 EOF
 fi
 
-cat > "${FTPS_AUTH_GROUP_FILE}" <<EOF
+cat >"${FTPS_AUTH_GROUP_FILE}" <<EOF
 ${FTPS_AUTH_GROUP_NAME}:x:${FTPS_AUTH_GROUP_ID}:${FTPS_LOCAL_USER}${FTPS_ADDITIONAL_USER:+,${FTPS_ADDITIONAL_USER}}
 EOF
 
@@ -164,7 +164,7 @@ ftps_extract_private_key_block() {
                 exit 1
             }
         }
-    ' "${source_file}" > "${destination_file}"
+    ' "${source_file}" >"${destination_file}"
 }
 
 ftps_extract_certificate_blocks() {
@@ -199,9 +199,9 @@ ftps_certificate_matches_private_key() {
     private_key_public_key_file="$(mktemp)"
 
     result=1
-    if openssl x509 -in "${certificate_file}" -pubkey -noout > "${certificate_public_key_file}" 2>/dev/null &&
-       openssl pkey -in "${private_key_file}" -pubout > "${private_key_public_key_file}" 2>/dev/null &&
-       cmp -s "${certificate_public_key_file}" "${private_key_public_key_file}"; then
+    if openssl x509 -in "${certificate_file}" -pubkey -noout >"${certificate_public_key_file}" 2>/dev/null &&
+        openssl pkey -in "${private_key_file}" -pubout >"${private_key_public_key_file}" 2>/dev/null &&
+        cmp -s "${certificate_public_key_file}" "${private_key_public_key_file}"; then
         result=0
     fi
 
@@ -244,15 +244,15 @@ ftps_normalize_pem_bundle() {
         exit 1
     fi
 
-    cat "${private_key_file}" > "${destination_file}"
-    cat "${certificate_prefix}.${matching_certificate_index}" >> "${destination_file}"
+    cat "${private_key_file}" >"${destination_file}"
+    cat "${certificate_prefix}.${matching_certificate_index}" >>"${destination_file}"
 
     for certificate_index in $(seq 1 "${certificate_count}"); do
         if [[ "${certificate_index}" == "${matching_certificate_index}" ]]; then
             continue
         fi
 
-        cat "${certificate_prefix}.${certificate_index}" >> "${destination_file}"
+        cat "${certificate_prefix}.${certificate_index}" >>"${destination_file}"
     done
 
     rm -f "${private_key_file}" "${certificate_prefix}".*
@@ -297,18 +297,18 @@ ftps_prepare_proftpd_tls_material() {
     install -d -m 0750 -o root -g "${FTPS_CERTIFICATE_GROUP}" "$(dirname "${certificate_file}")"
     install -d -m 0750 -o root -g "${FTPS_CERTIFICATE_GROUP}" "$(dirname "${chain_file}")"
 
-    cat "${private_key_file}" > "${certificate_file}"
-    cat "${certificate_prefix}.${matching_certificate_index}" >> "${certificate_file}"
+    cat "${private_key_file}" >"${certificate_file}"
+    cat "${certificate_prefix}.${matching_certificate_index}" >>"${certificate_file}"
 
     if [[ "${certificate_count}" -gt 1 ]]; then
-        : > "${chain_file}"
+        : >"${chain_file}"
 
         for certificate_index in $(seq 1 "${certificate_count}"); do
             if [[ "${certificate_index}" == "${matching_certificate_index}" ]]; then
                 continue
             fi
 
-            cat "${certificate_prefix}.${certificate_index}" >> "${chain_file}"
+            cat "${certificate_prefix}.${certificate_index}" >>"${chain_file}"
         done
 
         FTPS_TLS_CHAIN_DIRECTIVE="  TLSCertificateChainFile       ${chain_file}"
@@ -337,14 +337,14 @@ ftps_write_pkcs12_bundle() {
     bundle_file="$(mktemp)"
     raw_pem_file="$(mktemp)"
 
-    if ! printf '%s' "${encoded_bundle}" | base64 -d > "${bundle_file}" 2>/dev/null; then
+    if ! printf '%s' "${encoded_bundle}" | base64 -d >"${bundle_file}" 2>/dev/null; then
         rm -f "${bundle_file}" "${raw_pem_file}"
         ftps_warn "FTPS certificate value is not PEM and could not be base64-decoded as PKCS12"
         exit 1
     fi
 
-    if ! openssl pkcs12 -in "${bundle_file}" -noenc -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" 2>/dev/null && \
-       ! openssl pkcs12 -in "${bundle_file}" -nodes -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" 2>/dev/null; then
+    if ! openssl pkcs12 -in "${bundle_file}" -noenc -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" 2>/dev/null &&
+        ! openssl pkcs12 -in "${bundle_file}" -nodes -passin "pass:${FTPS_CERTIFICATE_PKCS12_PASSWORD}" -out "${raw_pem_file}" 2>/dev/null; then
         rm -f "${bundle_file}" "${raw_pem_file}"
         ftps_warn "FTPS certificate PKCS12 bundle could not be converted to PEM"
         exit 1
@@ -365,7 +365,7 @@ if [[ -n "${FTPS_CERTIFICATE_PEM}" && -n "${FTPS_CERTIFICATE_KEY_PEM}" && "${FTP
     trap 'rm -f "${raw_pem_file}"' RETURN
 
     ftps_log "Using separate PEM certificate and private key environment variables"
-    cat > "${raw_pem_file}" <<EOF
+    cat >"${raw_pem_file}" <<EOF
 ${FTPS_CERTIFICATE_KEY_PEM}
 ${FTPS_CERTIFICATE_PEM}
 EOF
@@ -377,7 +377,7 @@ elif [[ -n "${FTPS_CERTIFICATE_PEM}" ]]; then
 
     if [[ "${FTPS_CERTIFICATE_PEM}" == *"-----BEGIN "* ]]; then
         ftps_log "Using PEM certificate content from environment variable"
-        printf '%s\n' "${FTPS_CERTIFICATE_PEM}" > "${raw_pem_file}"
+        printf '%s\n' "${FTPS_CERTIFICATE_PEM}" >"${raw_pem_file}"
         ftps_normalize_pem_bundle "${raw_pem_file}" "${FTPS_CERTIFICATE_PATH}"
     else
         ftps_write_pkcs12_bundle "${FTPS_CERTIFICATE_PEM}"
@@ -410,7 +410,7 @@ if [[ -n "${FTPS_TLS_CHAIN_DIRECTIVE}" ]]; then
 fi
 
 sed -i 's/^#\?LoadModule mod_tls.c/LoadModule mod_tls.c/' /etc/proftpd/modules.conf
-envsubst < /etc/proftpd/proftpd-ftps.conf.template > /etc/proftpd/conf.d/hmcts-ftps.conf
+envsubst </etc/proftpd/proftpd-ftps.conf.template >/etc/proftpd/conf.d/hmcts-ftps.conf
 
 ftps_log "ProFTPD configuration rendered"
 

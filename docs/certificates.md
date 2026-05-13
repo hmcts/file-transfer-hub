@@ -1,7 +1,8 @@
-* last_reviewed_on: 2026-04-17
-* review_in: 12 months
-
 # Certificates
+
+Last reviewed on: 2026-04-17
+
+Review in: 12 months
 
 [← Back to root README](../README.md)
 
@@ -13,10 +14,10 @@ Transport Layer Security is enabled with Let's Encrypt certificates, which renew
 
 Certificates are managed per environment as follows:
 
-| Environment | Certificate | DNS | Key Vault (Acmebot) |
-| --- | --- | --- | --- |
-| PROD | dtsft-prod-apps-hmcts-net | dtsft.prod.apps.hmcts.net | acmehmctshubprodintsvc |
-| DEMO | dtsft-demo-apps-hmcts-net | dtsft.demo.apps.hmcts.net | acmedcdcftappsdemo |
+| Environment | Certificate               | DNS                       | Key Vault (Acmebot)    |
+| ----------- | ------------------------- | ------------------------- | ---------------------- |
+| PROD        | dtsft-prod-apps-hmcts-net | dtsft.prod.apps.hmcts.net | acmehmctshubprodintsvc |
+| DEMO        | dtsft-demo-apps-hmcts-net | dtsft.demo.apps.hmcts.net | acmedcdcftappsdemo     |
 
 ## Renewal
 
@@ -50,7 +51,7 @@ The FTPS Container App reads the certificate secret **at startup only**. After A
 
 After the restart, confirm the new certificate is in use by connecting to the FTPS endpoint with an FTPS client and inspecting the presented certificate's expiry date, or by checking the startup logs for:
 
-```
+```text
 [ftps-entrypoint] Certificate file ready at /etc/proftpd/tls/ftps.pem
 [ftps-entrypoint] Prepared ProFTPD TLS material at /etc/proftpd/tls/runtime/server.pem
 ```

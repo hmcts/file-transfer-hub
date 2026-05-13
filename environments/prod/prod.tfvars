@@ -1,3 +1,8 @@
+# Temporarily set to true so that the container-app plan does not attempt to
+# read the alert email Key Vault secrets before core apply has created them.
+# Remove this line and re-apply once core has been applied and the secrets exist.
+maintenance_mode = true
+
 address_space = {
   vnet           = ["10.11.10.0/24"]
   general_subnet = ["10.11.10.0/26"]
@@ -12,7 +17,11 @@ hub = {
 
 ftps = {
   public_endpoint      = "dtsft.prod.apps.hmcts.net"
-  forward_delete_after = true
+  # forward_interval_seconds  = 60  # Seconds between forwarding runs. Defaults to 60 if omitted. Set to e.g. 300 for 5 minutes.
+  certificate_key_vault_id    = "/subscriptions/0978315c-75fe-4ada-9d11-1eb5e0e0b214/resourceGroups/hub-prod-rg/providers/Microsoft.KeyVault/vaults/acmehmctshubprodintsvc"
+  certificate_secret_name     = "dtsft-prod-apps-hmcts-net"
+  certificate_key_secret_name = "dtsft-prod-apps-hmcts-net"
+  forward_delete_after        = true
   forward_targets = [
     {
       name                 = "primary"

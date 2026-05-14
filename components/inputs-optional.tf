@@ -78,6 +78,7 @@ variable "ftps" {
     local_password_secret_name        = optional(string, "ftps-local-password")
     local_upload_user                 = optional(string, "ftpssvc")
     local_user_secret_name            = optional(string, "ftps-local-username")
+    manage_storage_sftp_target        = optional(bool)
     passive_port_min                  = optional(number, 1024)
     passive_port_max                  = optional(number, 1034)
     public_endpoint                   = optional(string, "localhost")

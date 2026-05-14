@@ -16,7 +16,7 @@ hub = {
 }
 
 ftps = {
-  public_endpoint      = "dtsft.prod.apps.hmcts.net"
+  public_endpoint = "dtsft.prod.apps.hmcts.net"
   # forward_interval_seconds  = 60  # Seconds between forwarding runs. Defaults to 60 if omitted. Set to e.g. 300 for 5 minutes.
   certificate_key_vault_id    = "/subscriptions/0978315c-75fe-4ada-9d11-1eb5e0e0b214/resourceGroups/hub-prod-rg/providers/Microsoft.KeyVault/vaults/acmehmctshubprodintsvc"
   certificate_secret_name     = "dtsft-prod-apps-hmcts-net"

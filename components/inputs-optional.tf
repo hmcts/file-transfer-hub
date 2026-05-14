@@ -74,6 +74,8 @@ variable "ftps" {
       password_secret_name = optional(string, "ftps-storage-sftp-password")
       key_vault_id         = optional(string)
     })), [])
+    additional_password_secret_name   = optional(string)
+    additional_user_secret_name       = optional(string)
     listen_port                       = optional(number, 990)
     local_password_secret_name        = optional(string, "ftps-local-password")
     local_upload_user                 = optional(string, "ftpssvc")

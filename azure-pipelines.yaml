@@ -3,6 +3,7 @@ trigger:
   branches:
     include:
       - main
+      - prod-only/*
 
 pr:
   - main
@@ -67,6 +68,8 @@ variables:
   - template: vars/input-variables.yaml@cnp-azuredevops-libraries
   - name: imageRepository
     value: file-transfer-hub/ftps-server
+  - name: prodOnlyBranchPrefix
+    value: refs/heads/prod-only/
 
 stages:
   - stage: TerraformPrecheck
@@ -127,11 +130,60 @@ stages:
   - ${{ each deployment in parameters.environment_components }}:
       - stage: ${{ deployment.deployment }}
         dependsOn: ${{ deployment.dependsOn }}
-        ${{ if eq(deployment.component, 'container-app') }}:
+        ${{ if and(eq(deployment.environment, 'nonprod'), eq(deployment.component, 'core')) }}:
+          condition: >-
+            not(
+              or(
+                startsWith(variables['Build.SourceBranch'], variables['prodOnlyBranchPrefix']),
+                startsWith(variables['System.PullRequest.SourceBranch'], variables['prodOnlyBranchPrefix'])
+              )
+            )
+        ${{ if and(eq(deployment.environment, 'prod'), eq(deployment.component, 'core')) }}:
+          condition: >-
+            or(
+              in(dependencies.nonprod_core.result, 'Succeeded'),
+              and(
+                or(
+                  startsWith(variables['Build.SourceBranch'], variables['prodOnlyBranchPrefix']),
+                  startsWith(variables['System.PullRequest.SourceBranch'], variables['prodOnlyBranchPrefix'])
+                ),
+                in(dependencies.nonprod_core.result, 'Skipped')
+              )
+            )
+        ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'nonprod')) }}:
           condition: >-
             and(
               succeeded('${{ deployment.environment }}_core'),
-              in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
+              in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped'),
+              not(
+                or(
+                  startsWith(variables['Build.SourceBranch'], variables['prodOnlyBranchPrefix']),
+                  startsWith(variables['System.PullRequest.SourceBranch'], variables['prodOnlyBranchPrefix'])
+                )
+              )
+            )
+          variables:
+            - name: log_analytics_workspace_id
+              value: $[stageDependencies.${{ deployment.environment
+                }}_core.TerraformPlanApply.outputs['terraformOutputs.log_analytics_workspace_id']]
+            - name: container_apps_subnet_id
+              value: $[stageDependencies.${{ deployment.environment
+                }}_core.TerraformPlanApply.outputs['terraformOutputs.container_apps_subnet_id']]
+        ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'prod')) }}:
+          condition: >-
+            and(
+              succeeded('${{ deployment.environment }}_core'),
+              in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped'),
+              or(
+                in(dependencies.nonprod_container_app.result, 'Succeeded'),
+                and(
+                  or(
+                    startsWith(variables['Build.SourceBranch'], variables['prodOnlyBranchPrefix']),
+                    startsWith(variables['System.PullRequest.SourceBranch'], variables['prodOnlyBranchPrefix'])
+                  ),
+                  in(dependencies.nonprod_container_app.result, 'Skipped')
+                )
+              )
             )
           variables:
             - name: log_analytics_workspace_id

@@ -1,6 +1,7 @@
 locals {
   enable_ftps_local_user_secrets  = var.env != "prod"
   enable_storage_sftp_test_target = coalesce(try(var.ftps.manage_storage_sftp_target, null), var.env != "prod")
+
   storage_sftp_host               = "${module.storage.storageaccount_name}.blob.core.windows.net"
   storage_sftp_username           = "${module.storage.storageaccount_name}.${var.ftps.storage_sftp_user}"
   monitoring_email_placeholder    = "unset@example.invalid"

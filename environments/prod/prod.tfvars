@@ -22,6 +22,7 @@ ftps = {
   certificate_secret_name     = "dtsft-prod-apps-hmcts-net"
   certificate_key_secret_name = "dtsft-prod-apps-hmcts-net"
   forward_delete_after        = true
+  manage_storage_sftp_target  = true
   forward_targets = [
     {
       name                 = "primary"

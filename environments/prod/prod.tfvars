@@ -2,7 +2,7 @@
 # read Key Vault secrets that core apply has not created yet, including alert
 # email and generated storage-forwarding secrets. Remove this line and re-apply
 # once core has been applied and the required secrets exist.
-maintenance_mode = true
+# maintenance_mode = true
 
 address_space = {
   vnet           = ["10.11.10.0/24"]

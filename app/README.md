@@ -10,7 +10,7 @@ This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to on
 - Passive FTPS ports: `1024-1034` by default for Azure Container Apps deployments
 - FTPS user credentials: provided at runtime
 - TLS certificate: provided at runtime as separate PEM secrets, a single combined PEM secret, a base64-encoded PKCS#12 bundle, or as a mounted combined PEM file
-- Forwarding targets: SFTP username/password over `lftp mirror --reverse`, with duplicate fan-out copies when multiple targets are configured
+- Forwarding targets: SFTP username/password over `lftp put`, with duplicate fan-out copies when multiple targets are configured
 - Forwarding host trust: the SFTP client currently uses `StrictHostKeyChecking=accept-new` so the first seen host key is accepted and then pinned for the life of that container filesystem
 
 The container image is built from:

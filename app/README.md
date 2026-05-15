@@ -157,7 +157,7 @@ After startup has a normalized PEM bundle, it derives a dedicated ProFTPD server
 - `FTPS_PASSIVE_MAX_PORT`: Last passive FTPS data port
 - `FTPS_ENABLE_STORAGE_FORWARD`: Enables the background SFTP forwarding loop
 - `FTPS_FORWARD_INTERVAL_SECONDS`: Seconds to sleep between forwarding runs (image default: `60`). In deployed environments this is driven by the Terraform input `ftps.forward_interval_seconds`; set it in `environments/<env>/<env>.tfvars` to change the interval without rebuilding the image.
-- `FTPS_FORWARD_DELETE_AFTER`: Removes local files after a successful forward when `true`
+- `FTPS_FORWARD_DELETE_AFTER`: Removes local files after a successful forward to all configured targets when `true`
 - `FTPS_FORWARD_TARGET_COUNT`: Number of indexed forwarding targets to process
 - `FTPS_FORWARD_TARGET_<n>_NAME`: Optional label for target `n`
 - `FTPS_FORWARD_TARGET_<n>_HOST`: Destination SFTP host for target `n`

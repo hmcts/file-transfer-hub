@@ -45,7 +45,7 @@ The optional `ftps.manage_storage_sftp_target` and `ftps.manage_storage_sftp_sec
 
 When `maintenance_mode = true`, the container-app plan skips alert-email and FTPS forwarding secret lookups so prod bootstrap plans can succeed before a core apply has created generated Key Vault secrets. In that mode, the FTPS forwarder is also disabled until maintenance mode is removed and the environment is re-applied.
 
-Multiple entries in `ftps.forward_targets` cause the FTPS runtime to forward each uploaded file to each target in turn.
+Multiple entries in `ftps.forward_targets` cause the FTPS runtime to forward each uploaded file to each target in turn. When `ftps.forward_delete_after = true`, the runtime now removes the local uploaded files only after all configured targets have completed successfully.
 
 To use a certificate from a different Key Vault (for example, Acmebot), set `ftps.certificate_key_vault_id` and point `ftps.certificate_secret_name` and `ftps.certificate_key_secret_name` to PEM-format secrets in that vault, or point both at the same base64-encoded PKCS#12 certificate secret when the bundle contains the private key and the matching leaf certificate.
 

@@ -111,7 +111,6 @@ forward_to_target() {
   local username="$4"
   local password="$5"
   local remote_dir="$6"
-  local remove_source_flag="$7"
   local encoded_username encoded_password
 
   ftps_forward_log "Forwarding files to ${name} (${host}:${port})"
@@ -128,7 +127,7 @@ set net:timeout 20
 set sftp:auto-confirm yes
 set xfer:log yes
 set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=accept-new -o HostKeyAlgorithms=+ssh-rsa"
-mirror --reverse --continue --only-newer --parallel=1 ${remove_source_flag} "${FTPS_FORWARD_LOCAL_DIR}" "${remote_dir}"
+mirror --reverse --continue --only-newer --parallel=1 "${FTPS_FORWARD_LOCAL_DIR}" "${remote_dir}"
 bye
 EOF
 )"; then
@@ -149,6 +148,11 @@ EOF
   fi
 }
 
+delete_forwarded_files() {
+  ftps_forward_log "Deleting local files after successful forwarding to all targets"
+  find "${FTPS_FORWARD_LOCAL_DIR}" -type f -delete
+}
+
 discover_targets
 
 if (( ${#target_hosts[@]} == 0 )); then
@@ -156,17 +160,15 @@ if (( ${#target_hosts[@]} == 0 )); then
 fi
 
 for index in "${!target_hosts[@]}"; do
-  remove_source_flag=""
-  if [[ "${FTPS_FORWARD_DELETE_AFTER:-false}" == "true" && "${index}" -eq $((${#target_hosts[@]} - 1)) ]]; then
-    remove_source_flag="--Remove-source-files"
-  fi
-
   forward_to_target \
     "${target_names[index]}" \
     "${target_hosts[index]}" \
     "${target_ports[index]}" \
     "${target_usernames[index]}" \
     "${target_passwords[index]}" \
-    "${target_remote_dirs[index]}" \
-    "${remove_source_flag}"
+    "${target_remote_dirs[index]}"
 done
+
+if [[ "${FTPS_FORWARD_DELETE_AFTER:-false}" == "true" ]]; then
+  delete_forwarded_files
+fi

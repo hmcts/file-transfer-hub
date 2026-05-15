@@ -27,7 +27,7 @@ RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/ftps-storage-forward.
 # SFTP servers only offer this key type.  lftp's native SFTP uses the system
 # ssh binary which reads this config.
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh \
-    && printf 'Host *\n    HostKeyAlgorithms +ssh-rsa\n    PubkeyAcceptedKeyTypes +ssh-rsa\n' \
+    && printf 'Host *\n    HostKeyAlgorithms +ssh-rsa\n    PubkeyAcceptedKeyTypes +ssh-rsa\n    StrictHostKeyChecking accept-new\n' \
        > /root/.ssh/config \
     && chmod 600 /root/.ssh/config
 

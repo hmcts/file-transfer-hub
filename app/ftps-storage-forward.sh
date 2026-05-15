@@ -135,6 +135,8 @@ forward_to_target() {
     if [[ "${remote_dir}" != "." ]]; then
       printf 'cd "%s"\n' "${remote_dir_escaped}"
     fi
+    printf '%s\n' 'pwd'
+    printf '%s\n' 'cls -la .'
     while IFS= read -r -d '' local_file; do
       local basename
       basename="$(basename "${local_file}")"

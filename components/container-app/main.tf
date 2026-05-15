@@ -112,6 +112,7 @@ locals {
     }
     if try(target.host, null) != null || try(target.host_secret_name, null) != null || (index == 0 && var.env != "prod")
   ]
+  ftps_effective_forward_targets = var.maintenance_mode ? [] : local.ftps_forward_targets
   ftps_key_vault_secret_refs = distinct(concat(
     [
       {
@@ -131,7 +132,7 @@ locals {
       }
     ],
     [
-      for target in local.ftps_forward_targets : {
+      for target in local.ftps_effective_forward_targets : {
         name                  = target.host_secret_name
         key_vault_id          = target.key_vault_id
         key_vault_secret_name = target.host_secret_name
@@ -139,14 +140,14 @@ locals {
       if target.host_secret_name != null
     ],
     [
-      for target in local.ftps_forward_targets : {
+      for target in local.ftps_effective_forward_targets : {
         name                  = target.username_secret_name
         key_vault_id          = target.key_vault_id
         key_vault_secret_name = target.username_secret_name
       }
     ],
     [
-      for target in local.ftps_forward_targets : {
+      for target in local.ftps_effective_forward_targets : {
         name                  = target.password_secret_name
         key_vault_id          = target.key_vault_id
         key_vault_secret_name = target.password_secret_name
@@ -211,7 +212,7 @@ locals {
       },
       {
         name  = "FTPS_ENABLE_STORAGE_FORWARD"
-        value = tostring(var.ftps.forward_enabled)
+        value = tostring(!var.maintenance_mode && var.ftps.forward_enabled)
       },
       {
         name  = "FTPS_FORWARD_INTERVAL_SECONDS"
@@ -223,11 +224,11 @@ locals {
       },
       {
         name  = "FTPS_FORWARD_TARGET_COUNT"
-        value = tostring(length(local.ftps_forward_targets))
+        value = tostring(length(local.ftps_effective_forward_targets))
       },
     ],
     flatten([
-      for index, target in local.ftps_forward_targets : concat([
+      for index, target in local.ftps_effective_forward_targets : concat([
         {
           name  = "FTPS_FORWARD_TARGET_${index}_NAME"
           value = target.name

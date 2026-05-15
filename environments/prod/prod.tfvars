@@ -1,6 +1,7 @@
 # Temporarily set to true so that the container-app plan does not attempt to
-# read the alert email Key Vault secrets before core apply has created them.
-# Remove this line and re-apply once core has been applied and the secrets exist.
+# read Key Vault secrets that core apply has not created yet, including alert
+# email and generated storage-forwarding secrets. Remove this line and re-apply
+# once core has been applied and the required secrets exist.
 maintenance_mode = true
 
 address_space = {

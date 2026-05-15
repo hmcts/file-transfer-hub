@@ -43,6 +43,8 @@ The FTPS runtime can also read an optional second FTPS login from `ftps.addition
 
 The optional `ftps.manage_storage_sftp_target` and `ftps.manage_storage_sftp_secret_copies` flags let prod opt into the same Azure Storage SFTP forwarding model as nonprod. If the storage-target secrets already exist in Key Vault outside Terraform, delete or import them before enabling Terraform-managed secret copies.
 
+When `maintenance_mode = true`, the container-app plan skips alert-email and FTPS forwarding secret lookups so prod bootstrap plans can succeed before a core apply has created generated Key Vault secrets. In that mode, the FTPS forwarder is also disabled until maintenance mode is removed and the environment is re-applied.
+
 Multiple entries in `ftps.forward_targets` cause the FTPS runtime to forward each uploaded file to each target in turn.
 
 To use a certificate from a different Key Vault (for example, Acmebot), set `ftps.certificate_key_vault_id` and point `ftps.certificate_secret_name` and `ftps.certificate_key_secret_name` to PEM-format secrets in that vault, or point both at the same base64-encoded PKCS#12 certificate secret when the bundle contains the private key and the matching leaf certificate.

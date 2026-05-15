@@ -133,11 +133,13 @@ forward_to_target() {
     printf '%s\n' 'set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=accept-new -o HostKeyAlgorithms=+ssh-rsa"'
     printf 'open "%s"\n' "sftp://${encoded_username}:${encoded_password}@${host}:${port}"
     printf 'lcd "%s"\n' "${FTPS_FORWARD_LOCAL_DIR}"
-    printf 'cd "%s"\n' "${remote_dir_escaped}"
+    if [[ "${remote_dir}" != "." ]]; then
+      printf 'cd "%s"\n' "${remote_dir_escaped}"
+    fi
     while IFS= read -r -d '' local_file; do
       local basename
       basename="$(basename "${local_file}")"
-      printf 'put -c "%s"\n' "${basename//\"/\\\"}"
+      printf 'put "%s"\n' "${basename//\"/\\\"}"
     done < <(find "${FTPS_FORWARD_LOCAL_DIR}" -mindepth 1 -maxdepth 1 -type f -print0 | sort -z)
     printf '%s\n' 'bye'
   } > "${lftp_script_file}"

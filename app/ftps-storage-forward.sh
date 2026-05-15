@@ -130,7 +130,6 @@ forward_to_target() {
     printf '%s\n' 'set net:timeout 20'
     printf '%s\n' 'set sftp:auto-confirm yes'
     printf '%s\n' 'set xfer:log yes'
-    printf '%s\n' 'set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=accept-new -o HostKeyAlgorithms=+ssh-rsa"'
     printf 'open "%s"\n' "sftp://${encoded_username}:${encoded_password}@${host}:${port}"
     printf 'lcd "%s"\n' "${FTPS_FORWARD_LOCAL_DIR}"
     if [[ "${remote_dir}" != "." ]]; then

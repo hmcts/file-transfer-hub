@@ -124,7 +124,6 @@ forward_to_target() {
 
   lftp_script_file="$(mktemp)"
   {
-    printf 'open "%s"\n' "sftp://${encoded_username}:${encoded_password}@${host}:${port}"
     printf '%s\n' 'set cmd:fail-exit yes'
     printf '%s\n' 'set net:max-retries 2'
     printf '%s\n' 'set net:reconnect-interval-base 5'
@@ -132,6 +131,7 @@ forward_to_target() {
     printf '%s\n' 'set sftp:auto-confirm yes'
     printf '%s\n' 'set xfer:log yes'
     printf '%s\n' 'set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=accept-new -o HostKeyAlgorithms=+ssh-rsa"'
+    printf 'open "%s"\n' "sftp://${encoded_username}:${encoded_password}@${host}:${port}"
     printf 'lcd "%s"\n' "${FTPS_FORWARD_LOCAL_DIR}"
     printf 'cd "%s"\n' "${remote_dir_escaped}"
     while IFS= read -r -d '' local_file; do

@@ -40,7 +40,7 @@ ftps = {
       name                 = "BAIS"
       host_secret_name     = "LEDS2BAIS-PROD-FTPS-destination"
       port                 = 22
-      remote_dir           = "LEDS_HMCTS_PROD"
+      remote_dir           = "LEDS_EXTRACT"
       username_secret_name = "LEDS2BAIS-PROD-FTPS-Username"
       password_secret_name = "LEDS2BAIS-PROD-FTPS-Password"
     }

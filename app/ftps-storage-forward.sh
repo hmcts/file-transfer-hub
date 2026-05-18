@@ -111,33 +111,47 @@ forward_to_target() {
   local username="$4"
   local password="$5"
   local remote_dir="$6"
-  local remove_source_flag="$7"
   local encoded_username encoded_password
+  local remote_dir_escaped
+  local lftp_script_file
 
   ftps_forward_log "Forwarding files to ${name} (${host}:${port})"
 
   encoded_username="$(urlencode "${username}")"
   encoded_password="$(urlencode "${password}")"
+  remote_dir_escaped="${remote_dir//\\/\\\\}"
+  remote_dir_escaped="${remote_dir_escaped//\"/\\\"}"
+
+  lftp_script_file="$(mktemp)"
+  {
+    printf '%s\n' 'set cmd:fail-exit yes'
+    printf '%s\n' 'set net:max-retries 2'
+    printf '%s\n' 'set net:reconnect-interval-base 5'
+    printf '%s\n' 'set net:timeout 20'
+    printf '%s\n' 'set sftp:auto-confirm yes'
+    printf '%s\n' 'set xfer:log yes'
+    printf 'open "%s"\n' "sftp://${encoded_username}:${encoded_password}@${host}:${port}"
+    printf 'lcd "%s"\n' "${FTPS_FORWARD_LOCAL_DIR}"
+    if [[ "${remote_dir}" != "." ]]; then
+      printf 'cd "%s"\n' "${remote_dir_escaped}"
+    fi
+    while IFS= read -r -d '' local_file; do
+      local basename
+      basename="$(basename "${local_file}")"
+      printf 'put "%s"\n' "${basename//\"/\\\"}"
+    done < <(find "${FTPS_FORWARD_LOCAL_DIR}" -mindepth 1 -maxdepth 1 -type f -print0 | sort -z)
+    printf '%s\n' 'bye'
+  } > "${lftp_script_file}"
 
   local lftp_output
-  if lftp_output="$(lftp "sftp://${encoded_username}:${encoded_password}@${host}:${port}" 2>&1 <<EOF
-set cmd:fail-exit yes
-set net:max-retries 2
-set net:reconnect-interval-base 5
-set net:timeout 20
-set sftp:auto-confirm yes
-set xfer:log yes
-set sftp:connect-program "ssh -a -x -o StrictHostKeyChecking=accept-new -o HostKeyAlgorithms=+ssh-rsa"
-mirror --reverse --continue --only-newer --parallel=1 ${remove_source_flag} "${FTPS_FORWARD_LOCAL_DIR}" "${remote_dir}"
-bye
-EOF
-)"; then
+  if lftp_output="$(lftp -f "${lftp_script_file}" 2>&1)"; then
     if [[ -n "${lftp_output}" ]]; then
       while IFS= read -r line; do
         ftps_forward_log "${name}: ${line}"
       done <<< "${lftp_output}"
     fi
     ftps_forward_log "Forwarding to ${name} completed successfully"
+    rm -f "${lftp_script_file}"
   else
     if [[ -n "${lftp_output}" ]]; then
       while IFS= read -r line; do
@@ -145,8 +159,14 @@ EOF
       done <<< "${lftp_output}"
     fi
     ftps_forward_log "Forwarding to ${name} failed"
+    rm -f "${lftp_script_file}"
     return 1
   fi
+}
+
+delete_forwarded_files() {
+  ftps_forward_log "Deleting local files after successful forwarding to all targets"
+  find "${FTPS_FORWARD_LOCAL_DIR}" -type f -delete
 }
 
 discover_targets
@@ -156,17 +176,15 @@ if (( ${#target_hosts[@]} == 0 )); then
 fi
 
 for index in "${!target_hosts[@]}"; do
-  remove_source_flag=""
-  if [[ "${FTPS_FORWARD_DELETE_AFTER:-false}" == "true" && "${index}" -eq $((${#target_hosts[@]} - 1)) ]]; then
-    remove_source_flag="--Remove-source-files"
-  fi
-
   forward_to_target \
     "${target_names[index]}" \
     "${target_hosts[index]}" \
     "${target_ports[index]}" \
     "${target_usernames[index]}" \
     "${target_passwords[index]}" \
-    "${target_remote_dirs[index]}" \
-    "${remove_source_flag}"
+    "${target_remote_dirs[index]}"
 done
+
+if [[ "${FTPS_FORWARD_DELETE_AFTER:-false}" == "true" ]]; then
+  delete_forwarded_files
+fi

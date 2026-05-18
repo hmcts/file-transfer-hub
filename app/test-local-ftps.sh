@@ -6,10 +6,11 @@ COMPOSE_PROJECT_PREFIX="ftps-local-smoke"
 PRESERVE_STACK="${FTPS_TEST_PRESERVE_STACK:-false}"
 TEMP_DIR="$(mktemp -d "${SCRIPT_DIR}/.ftps-local-smoke.XXXXXX")"
 TEST_TIMESTAMP="$(date +%s)"
-ALL_CASES=(pem pem-special-target-password pkcs12-chain)
+ALL_CASES=(pem pem-delete-after pem-special-target-password pkcs12-chain)
 KNOWN_COMPOSE_PROJECTS=(
     "${COMPOSE_PROJECT_PREFIX}"
     "${COMPOSE_PROJECT_PREFIX}-pem"
+    "${COMPOSE_PROJECT_PREFIX}-pem-delete-after"
     "${COMPOSE_PROJECT_PREFIX}-pem-special-target-password"
     "${COMPOSE_PROJECT_PREFIX}-pkcs12-chain"
 )
@@ -102,6 +103,7 @@ Usage: ./test-local-ftps.sh [case ...]
 
 Available cases:
   pem
+    pem-delete-after
     pem-special-target-password
   pkcs12-chain
 
@@ -274,6 +276,12 @@ prepare_pem_special_target_password_case() {
     export SFTP_TARGET_0_PASSWORD="sftp,pass"
 }
 
+prepare_pem_delete_after_case() {
+    prepare_pem_case "$1"
+
+    export FTPS_FORWARD_DELETE_AFTER="true"
+}
+
 prepare_pkcs12_chain_case() {
     local case_dir="$1"
     local bundle_file fixture_file
@@ -390,6 +398,9 @@ run_smoke_case() {
         pem)
             prepare_pem_case "${case_dir}" || return 1
             ;;
+        pem-delete-after)
+            prepare_pem_delete_after_case "${case_dir}" || return 1
+            ;;
         pem-special-target-password)
             prepare_pem_special_target_password_case "${case_dir}" || return 1
             ;;
@@ -413,7 +424,7 @@ run_smoke_case() {
     fi
 
     case "${case_name}" in
-        pem|pem-special-target-password)
+        pem|pem-delete-after|pem-special-target-password)
             assert_certificate_blocks 1 1 || return 1
             assert_presented_certificate_count 1 || return 1
             ;;
@@ -451,6 +462,13 @@ run_smoke_case() {
         return 1
     fi
 
+    if [[ "${case_name}" == "pem-delete-after" ]]; then
+        if compose exec -T ftps sh -lc "test -f '/srv/ftps/ftpssvc/upload/${TEST_FILENAME}'"; then
+            echo "Uploaded file was not deleted from the local FTPS upload directory" >&2
+            return 1
+        fi
+    fi
+
     if [[ "${PRESERVE_STACK}" != "true" ]]; then
         compose_down
     fi
@@ -466,6 +484,7 @@ parse_args "$@"
 
 export FTPS_LOCAL_PASSWORD="localpass123!"
 export FTPS_FORWARD_INTERVAL_SECONDS="${FTPS_FORWARD_INTERVAL_SECONDS:-2}"
+export FTPS_FORWARD_DELETE_AFTER="${FTPS_FORWARD_DELETE_AFTER:-false}"
 export SFTP_TARGET_0_USER="${SFTP_TARGET_0_USER:-sftpuser}"
 export SFTP_TARGET_0_PASSWORD="${SFTP_TARGET_0_PASSWORD:-sftppass}"
 export SFTP_TARGET_0_REMOTE_DIR="${SFTP_TARGET_0_REMOTE_DIR:-dropoff}"

@@ -10,7 +10,7 @@ This app uses ProFTPD for implicit FTPS and `lftp` for periodic forwarding to on
 - Passive FTPS ports: `1024-1034` by default for Azure Container Apps deployments
 - FTPS user credentials: provided at runtime
 - TLS certificate: provided at runtime as separate PEM secrets, a single combined PEM secret, a base64-encoded PKCS#12 bundle, or as a mounted combined PEM file
-- Forwarding targets: SFTP username/password over `lftp mirror --reverse`, with duplicate fan-out copies when multiple targets are configured
+- Forwarding targets: SFTP username/password over `lftp put`, with duplicate fan-out copies when multiple targets are configured
 - Forwarding host trust: the SFTP client currently uses `StrictHostKeyChecking=accept-new` so the first seen host key is accepted and then pinned for the life of that container filesystem
 
 The container image is built from:
@@ -157,7 +157,7 @@ After startup has a normalized PEM bundle, it derives a dedicated ProFTPD server
 - `FTPS_PASSIVE_MAX_PORT`: Last passive FTPS data port
 - `FTPS_ENABLE_STORAGE_FORWARD`: Enables the background SFTP forwarding loop
 - `FTPS_FORWARD_INTERVAL_SECONDS`: Seconds to sleep between forwarding runs (image default: `60`). In deployed environments this is driven by the Terraform input `ftps.forward_interval_seconds`; set it in `environments/<env>/<env>.tfvars` to change the interval without rebuilding the image.
-- `FTPS_FORWARD_DELETE_AFTER`: Removes local files after a successful forward when `true`
+- `FTPS_FORWARD_DELETE_AFTER`: Removes local files after a successful forward to all configured targets when `true`
 - `FTPS_FORWARD_TARGET_COUNT`: Number of indexed forwarding targets to process
 - `FTPS_FORWARD_TARGET_<n>_NAME`: Optional label for target `n`
 - `FTPS_FORWARD_TARGET_<n>_HOST`: Destination SFTP host for target `n`

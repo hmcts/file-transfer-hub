@@ -7,7 +7,7 @@ This document describes how files are handled from the moment a client uploads t
 ## Overview
 
 ```
-FTPS client → ProFTPD (port 990) → local upload dir → lftp (poll loop) → SFTP target(s)
+FTPS client → ProFTPD (port 990) → local upload dir → lftp put loop (poll loop) → SFTP target(s)
 ```
 
 ---
@@ -70,19 +70,16 @@ Any target with a missing host, username, or password is skipped with a warning.
 
 ### 4. File transfer
 
-For each target, `lftp` is invoked with:
+For each target, `lftp` opens the SFTP session, changes into the configured remote directory, and uploads each file from the local upload directory with:
 
 ```
-mirror --reverse --continue --only-newer --parallel=1 [--Remove-source-files] <local-dir> <remote-dir>
+put -c <filename>
 ```
 
-| Flag | Effect |
+| Command / option | Effect |
 |---|---|
-| `--reverse` | Push local directory contents to the remote |
-| `--continue` | Resume interrupted transfers where possible |
-| `--only-newer` | Skip files whose mtime is not newer than the remote copy |
-| `--parallel=1` | Transfer one file at a time per target |
-| `--Remove-source-files` | Delete source file after successful transfer (conditional — see below) |
+| `cd <remote-dir>` | Change into the configured target directory before upload |
+| `put -c` | Upload each file and continue a partial transfer where possible |
 
 The SFTP connection is made over SSH with `StrictHostKeyChecking=accept-new` (trust-on-first-use), a 20-second timeout, and up to 2 retries.
 
@@ -95,24 +92,24 @@ All `lftp` output (including per-file transfer lines from `xfer:log` and any err
 Source file deletion is controlled by `FTPS_FORWARD_DELETE_AFTER` (default: `false`).
 
 - **`false`** — files are never deleted from the local upload directory after forwarding.
-- **`true`** — `--Remove-source-files` is added to the `lftp` call, **but only for the last target in the list**. Files are retained locally while being forwarded to all earlier targets and are removed only once the final target has received them successfully.
+- **`true`** — files are deleted from the local upload directory only after every configured target has completed successfully for that poll cycle.
 
-If the `lftp` call for the last target fails, `--Remove-source-files` is never executed and the file remains locally for retry on the next poll cycle.
+If any target fails, local files are kept for retry on the next poll cycle.
 
 ---
 
 ## Deduplication and idempotency
 
-The primary mechanism preventing a file from being sent more than once is `FTPS_FORWARD_DELETE_AFTER=true`: once `lftp` confirms the last target has received the file it passes `--Remove-source-files`, which deletes the local copy immediately. The file cannot be re-sent because it no longer exists locally.
+The primary mechanism preventing a file from being sent more than once is `FTPS_FORWARD_DELETE_AFTER=true`: once every target has received the file successfully, the local copy is deleted immediately. The file cannot be re-sent because it no longer exists locally.
 
-When `FTPS_FORWARD_DELETE_AFTER=false`, the only guard is `lftp`'s `--only-newer` flag, which compares file modification timestamps against whatever the destination currently holds. This is unreliable if the receiving system moves or deletes files from its SFTP inbox after processing — as soon as the file disappears from the destination the next poll cycle will re-upload it.
+When `FTPS_FORWARD_DELETE_AFTER=false`, the runtime will attempt to upload the local files again on the next poll cycle because there is no persistent sent ledger or remote mtime comparison.
 
 | Scenario | Outcome |
 |---|---|
 | Normal (`delete_after=true`): transfer succeeds | Local file deleted immediately — no re-send possible |
 | `delete_after=true`, last target fails | Source file kept; full retry on next cycle including all targets |
-| `delete_after=false`: destination file exists with same or newer mtime | Skipped — not retransferred |
-| `delete_after=false`: destination moves/deletes the file after processing | **File will be re-uploaded on next poll** |
+| `delete_after=false`: next poll cycle runs again | **File will be uploaded again on next poll** |
+| `delete_after=false`: destination moves/deletes the file after processing | **File will still be re-uploaded on next poll** |
 | Container restarted with `delete_after=false` | Local files gone; no re-send risk but unforwarded uploads are **lost** |
 | Forward loop fails mid-run (multiple targets) | Targets after the failure are skipped that cycle; retried from the beginning next interval |
 
@@ -189,5 +186,5 @@ Treat that IP allowlist change as temporary. Running the deployment pipeline can
 | `FTPS_ENABLE_STORAGE_FORWARD` | `true` | Enable/disable the forwarding loop |
 | `FTPS_FORWARD_INTERVAL_SECONDS` | `60` | Seconds to sleep between forwarding runs. In deployed environments this is set by the Terraform input `ftps.forward_interval_seconds` (default `60`); override it in the relevant `environments/<env>/<env>.tfvars` without rebuilding the image. |
 | `FTPS_FORWARD_LOCAL_DIR` | `${FTPS_LOCAL_UPLOAD_DIR}` | Local directory scanned for files to forward |
-| `FTPS_FORWARD_DELETE_AFTER` | `false` | Delete source files after successful transfer to the last target. Set to `true` in all environments to prevent duplicate uploads. |
+| `FTPS_FORWARD_DELETE_AFTER` | `false` | Delete source files after successful transfer to all configured targets. Set to `true` in all environments to prevent duplicate uploads. |
 | `FTPS_FORWARD_TARGET_COUNT` | _(unset)_ | Number of numbered SFTP targets; falls back to single-target mode if unset or 0 |

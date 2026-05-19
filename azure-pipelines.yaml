@@ -257,6 +257,47 @@ stages:
 
                 CONTAINER_APP_NAME="hub-fth-ftps-server-nonprod"
                 RESOURCE_GROUP="file-transfer-hub-nonprod-rg"
+                KEY_VAULT_NAME="acmedcdcftappsdemo"
+                KEY_VAULT_SECRET_NAME="dtsft-demo-apps-hmcts-net"
+
+                CERT_SECRET_REF=$(az containerapp show \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "properties.template.containers[0].env[?name=='FTPS_CERTIFICATE_PEM'].secretRef | [0]" \
+                  --output tsv)
+
+                KEY_SECRET_REF=$(az containerapp show \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "properties.template.containers[0].env[?name=='FTPS_CERTIFICATE_KEY_PEM'].secretRef | [0]" \
+                  --output tsv)
+
+                if [[ -z "$CERT_SECRET_REF" ]]; then
+                  echo "FTPS_CERTIFICATE_PEM secretRef was not found on $CONTAINER_APP_NAME" >&2
+                  exit 1
+                fi
+
+                CERTIFICATE_VALUE=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "$KEY_VAULT_SECRET_NAME" \
+                  --query value \
+                  --output tsv)
+
+                if [[ -z "$CERTIFICATE_VALUE" ]]; then
+                  echo "Key Vault secret $KEY_VAULT_SECRET_NAME in $KEY_VAULT_NAME returned an empty value" >&2
+                  exit 1
+                fi
+
+                SECRET_ARGS=("$CERT_SECRET_REF=$CERTIFICATE_VALUE")
+                if [[ -n "$KEY_SECRET_REF" && "$KEY_SECRET_REF" != "$CERT_SECRET_REF" ]]; then
+                  SECRET_ARGS+=("$KEY_SECRET_REF=$CERTIFICATE_VALUE")
+                fi
+
+                echo "Syncing latest certificate secret from $KEY_VAULT_NAME into $CONTAINER_APP_NAME"
+                az containerapp secret set \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --secrets "${SECRET_ARGS[@]}"
 
                 echo "Looking up active revisions for $CONTAINER_APP_NAME in $RESOURCE_GROUP"
 
@@ -296,6 +337,47 @@ stages:
 
                 CONTAINER_APP_NAME="hub-fth-ftps-server-prod"
                 RESOURCE_GROUP="file-transfer-hub-prod-rg"
+                KEY_VAULT_NAME="acmehmctshubprodintsvc"
+                KEY_VAULT_SECRET_NAME="dtsft-prod-apps-hmcts-net"
+
+                CERT_SECRET_REF=$(az containerapp show \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "properties.template.containers[0].env[?name=='FTPS_CERTIFICATE_PEM'].secretRef | [0]" \
+                  --output tsv)
+
+                KEY_SECRET_REF=$(az containerapp show \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "properties.template.containers[0].env[?name=='FTPS_CERTIFICATE_KEY_PEM'].secretRef | [0]" \
+                  --output tsv)
+
+                if [[ -z "$CERT_SECRET_REF" ]]; then
+                  echo "FTPS_CERTIFICATE_PEM secretRef was not found on $CONTAINER_APP_NAME" >&2
+                  exit 1
+                fi
+
+                CERTIFICATE_VALUE=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "$KEY_VAULT_SECRET_NAME" \
+                  --query value \
+                  --output tsv)
+
+                if [[ -z "$CERTIFICATE_VALUE" ]]; then
+                  echo "Key Vault secret $KEY_VAULT_SECRET_NAME in $KEY_VAULT_NAME returned an empty value" >&2
+                  exit 1
+                fi
+
+                SECRET_ARGS=("$CERT_SECRET_REF=$CERTIFICATE_VALUE")
+                if [[ -n "$KEY_SECRET_REF" && "$KEY_SECRET_REF" != "$CERT_SECRET_REF" ]]; then
+                  SECRET_ARGS+=("$KEY_SECRET_REF=$CERTIFICATE_VALUE")
+                fi
+
+                echo "Syncing latest certificate secret from $KEY_VAULT_NAME into $CONTAINER_APP_NAME"
+                az containerapp secret set \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --secrets "${SECRET_ARGS[@]}"
 
                 echo "Looking up active revisions for $CONTAINER_APP_NAME in $RESOURCE_GROUP"
 

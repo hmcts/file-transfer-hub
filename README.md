@@ -7,6 +7,7 @@ This repository contains the Terraform and application code for the FTPS-based f
 - `components/core` manages the shared Azure infrastructure, including networking, Log Analytics, Key Vault, and the temporary nonprod SFTP test target.
 - `components/container-app` manages the Azure Container Apps runtime for the FTPS service.
 - `app` contains the ProFTPD-based FTPS container and the `lftp` forwarding logic.
+- `azure-pipelines.yaml` includes a manual `refreshCertificateEnvironment` switch (`none`, `nonprod`, or `prod`) that skips image build and Terraform deployment, then restarts the selected FTPS Container App so it reloads renewed certificate material from Key Vault.
 
 ## Key Vault Secrets
 

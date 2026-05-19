@@ -27,6 +27,14 @@ parameters:
     displayName: "Refresh alert email addresses only (skip image build)"
     type: boolean
     default: false
+  - name: refreshCertificateEnvironment
+    displayName: "Restart Container App to reload renewed certificate from Key Vault"
+    type: string
+    default: none
+    values:
+      - none
+      - nonprod
+      - prod
   - name: environment_components
     type: object
     default:
@@ -86,8 +94,7 @@ stages:
   - stage: AppBuildPublish
     displayName: "App Build & Publish"
     dependsOn: []
-    ${{ if eq(parameters.refreshAlertsOnly, true) }}:
-      condition: false
+    condition: and(succeeded(), eq('${{ parameters.refreshCertificateEnvironment }}', 'none'), ne('${{ parameters.refreshAlertsOnly }}', 'true'))
     jobs:
       - job: BuildAndPublish
         pool:
@@ -127,9 +134,12 @@ stages:
   - ${{ each deployment in parameters.environment_components }}:
       - stage: ${{ deployment.deployment }}
         dependsOn: ${{ deployment.dependsOn }}
+        ${{ if eq(deployment.component, 'core') }}:
+          condition: eq('${{ parameters.refreshCertificateEnvironment }}', 'none')
         ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'nonprod')) }}:
           condition: >-
             and(
+              eq('${{ parameters.refreshCertificateEnvironment }}', 'none'),
               succeeded('${{ deployment.environment }}_core'),
               in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
             )
@@ -143,6 +153,7 @@ stages:
         ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'prod')) }}:
           condition: >-
             and(
+              eq('${{ parameters.refreshCertificateEnvironment }}', 'none'),
               succeeded('${{ deployment.environment }}_core'),
               in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
             )
@@ -218,3 +229,92 @@ stages:
 
                         echo "##vso[task.setvariable variable=log_analytics_workspace_id;isOutput=true]$LOG_ANALYTICS_ID"
                         echo "##vso[task.setvariable variable=container_apps_subnet_id;isOutput=true]$SUBNET_ID"
+
+  - stage: RefreshCertificate
+    displayName: "Reload renewed certificate from Key Vault"
+    dependsOn:
+      - TerraformPrecheck
+    condition: >-
+      and(
+        succeeded('TerraformPrecheck'),
+        ne('${{ parameters.refreshCertificateEnvironment }}', 'none')
+      )
+    jobs:
+      - job: RestartNonprodContainerApp
+        displayName: "Restart active nonprod Container App revision(s)"
+        condition: eq('${{ parameters.refreshCertificateEnvironment }}', 'nonprod')
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - task: AzureCLI@2
+            displayName: "Restart active nonprod Container App revision(s)"
+            inputs:
+              azureSubscription: HMCTS-HUB-NONPROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                CONTAINER_APP_NAME="hub-fth-ftps-server-nonprod"
+                RESOURCE_GROUP="file-transfer-hub-nonprod-rg"
+
+                echo "Looking up active revisions for $CONTAINER_APP_NAME in $RESOURCE_GROUP"
+
+                ACTIVE_REVISIONS=$(az containerapp revision list \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "[?properties.active].name" \
+                  --output tsv)
+
+                if [[ -z "$ACTIVE_REVISIONS" ]]; then
+                  echo "No active revisions found for $CONTAINER_APP_NAME" >&2
+                  exit 1
+                fi
+
+                while IFS= read -r revision; do
+                  [[ -z "$revision" ]] && continue
+                  echo "Restarting revision: $revision"
+                  az containerapp revision restart \
+                    --name "$CONTAINER_APP_NAME" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --revision "$revision"
+                done <<< "$ACTIVE_REVISIONS"
+      - job: RestartProdContainerApp
+        displayName: "Restart active prod Container App revision(s)"
+        condition: eq('${{ parameters.refreshCertificateEnvironment }}', 'prod')
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - task: AzureCLI@2
+            displayName: "Restart active prod Container App revision(s)"
+            inputs:
+              azureSubscription: HMCTS-HUB-PROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                CONTAINER_APP_NAME="hub-fth-ftps-server-prod"
+                RESOURCE_GROUP="file-transfer-hub-prod-rg"
+
+                echo "Looking up active revisions for $CONTAINER_APP_NAME in $RESOURCE_GROUP"
+
+                ACTIVE_REVISIONS=$(az containerapp revision list \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "[?properties.active].name" \
+                  --output tsv)
+
+                if [[ -z "$ACTIVE_REVISIONS" ]]; then
+                  echo "No active revisions found for $CONTAINER_APP_NAME" >&2
+                  exit 1
+                fi
+
+                while IFS= read -r revision; do
+                  [[ -z "$revision" ]] && continue
+                  echo "Restarting revision: $revision"
+                  az containerapp revision restart \
+                    --name "$CONTAINER_APP_NAME" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --revision "$revision"
+                done <<< "$ACTIVE_REVISIONS"

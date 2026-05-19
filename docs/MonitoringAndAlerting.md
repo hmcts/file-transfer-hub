@@ -59,7 +59,7 @@ monitoring = {
 - Disable entirely — set `monitoring = { enabled = false }` in the tfvars for an environment where alerting is not required.
 - **Maintenance mode** — set `maintenance_mode = true` at the top level of the environment tfvars to silence all alerts while the environment is under active development or planned work (see [Maintenance mode](#maintenance-mode) below).
 
-After changing the tfvars, run the pipeline with `overrideAction = apply` against the affected environment. Only `container-app` needs to be applied; `core` does not own the alert resources.
+After changing the tfvars, run the pipeline with `overrideAction = apply`. The pipeline follows its normal stage order; the alerting change takes effect when the target environment's `container-app` stage runs.
 
 ---
 
@@ -222,10 +222,10 @@ Add the flag to the relevant tfvars file — for example `environments/nonprod/n
 maintenance_mode = true
 ```
 
-Then run the pipeline with `overrideAction = apply` against that environment. The `container-app` apply will destroy the action group and metric alert. `core` does not own these resources so it does not need to be applied.
+Then run the pipeline with `overrideAction = apply`. The pipeline follows its normal stage order, and the target environment's `container-app` stage will destroy the action group and metric alert.
 
 **To leave maintenance mode:**
 
-Remove the line (or set it to `false`) and run the pipeline with `overrideAction = apply` again. The alert and action group are recreated from the Key Vault email secrets.
+Remove the line (or set it to `false`) and run the pipeline with `overrideAction = apply` again. The pipeline will recreate the alert and action group when the target environment's `container-app` stage runs.
 
 `maintenance_mode` is independent of `monitoring.enabled`. If you later want alerting permanently off for an environment, use `monitoring = { enabled = false }` instead and leave `maintenance_mode = false`.

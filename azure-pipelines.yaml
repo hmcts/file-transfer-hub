@@ -240,39 +240,34 @@ stages:
         ne('${{ parameters.refreshCertificateEnvironment }}', 'none')
       )
     jobs:
-      - job: RestartContainerApp
-        displayName: "Restart selected Container App revision(s)"
+      - job: RestartNonprodContainerApp
+        displayName: "Restart active nonprod Container App revision(s)"
+        condition: eq('${{ parameters.refreshCertificateEnvironment }}', 'nonprod')
         pool:
           vmImage: ${{ variables.agentImage }}
-        variables:
-          ${{ if eq(parameters.refreshCertificateEnvironment, 'nonprod') }}:
-            azureServiceConnection: HMCTS-HUB-NONPROD-INTSVC
-            containerAppResourceGroup: file-transfer-hub-nonprod-rg
-            containerAppName: hub-fth-ftps-server-nonprod
-          ${{ if eq(parameters.refreshCertificateEnvironment, 'prod') }}:
-            azureServiceConnection: HMCTS-HUB-PROD-INTSVC
-            containerAppResourceGroup: file-transfer-hub-prod-rg
-            containerAppName: hub-fth-ftps-server-prod
         steps:
           - task: AzureCLI@2
-            displayName: "Restart active Container App revision(s)"
+            displayName: "Restart active nonprod Container App revision(s)"
             inputs:
-              azureSubscription: $(azureServiceConnection)
+              azureSubscription: HMCTS-HUB-NONPROD-INTSVC
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 set -euo pipefail
 
-                echo "Looking up active revisions for $(containerAppName) in $(containerAppResourceGroup)"
+                CONTAINER_APP_NAME="hub-fth-ftps-server-nonprod"
+                RESOURCE_GROUP="file-transfer-hub-nonprod-rg"
+
+                echo "Looking up active revisions for $CONTAINER_APP_NAME in $RESOURCE_GROUP"
 
                 ACTIVE_REVISIONS=$(az containerapp revision list \
-                  --name "$(containerAppName)" \
-                  --resource-group "$(containerAppResourceGroup)" \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
                   --query "[?properties.active].name" \
                   --output tsv)
 
                 if [[ -z "$ACTIVE_REVISIONS" ]]; then
-                  echo "No active revisions found for $(containerAppName)" >&2
+                  echo "No active revisions found for $CONTAINER_APP_NAME" >&2
                   exit 1
                 fi
 
@@ -280,7 +275,46 @@ stages:
                   [[ -z "$revision" ]] && continue
                   echo "Restarting revision: $revision"
                   az containerapp revision restart \
-                    --name "$(containerAppName)" \
-                    --resource-group "$(containerAppResourceGroup)" \
+                    --name "$CONTAINER_APP_NAME" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --revision "$revision"
+                done <<< "$ACTIVE_REVISIONS"
+      - job: RestartProdContainerApp
+        displayName: "Restart active prod Container App revision(s)"
+        condition: eq('${{ parameters.refreshCertificateEnvironment }}', 'prod')
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - task: AzureCLI@2
+            displayName: "Restart active prod Container App revision(s)"
+            inputs:
+              azureSubscription: HMCTS-HUB-PROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                CONTAINER_APP_NAME="hub-fth-ftps-server-prod"
+                RESOURCE_GROUP="file-transfer-hub-prod-rg"
+
+                echo "Looking up active revisions for $CONTAINER_APP_NAME in $RESOURCE_GROUP"
+
+                ACTIVE_REVISIONS=$(az containerapp revision list \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "[?properties.active].name" \
+                  --output tsv)
+
+                if [[ -z "$ACTIVE_REVISIONS" ]]; then
+                  echo "No active revisions found for $CONTAINER_APP_NAME" >&2
+                  exit 1
+                fi
+
+                while IFS= read -r revision; do
+                  [[ -z "$revision" ]] && continue
+                  echo "Restarting revision: $revision"
+                  az containerapp revision restart \
+                    --name "$CONTAINER_APP_NAME" \
+                    --resource-group "$RESOURCE_GROUP" \
                     --revision "$revision"
                 done <<< "$ACTIVE_REVISIONS"

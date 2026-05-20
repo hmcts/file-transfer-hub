@@ -8,6 +8,7 @@ This repository contains the Terraform and application code for the FTPS-based f
 - `components/container-app` manages the Azure Container Apps runtime for the FTPS service.
 - `app` contains the ProFTPD-based FTPS container and the `lftp` forwarding logic.
 - `azure-pipelines.yaml` includes a manual `refreshCertificateEnvironment` switch (`none`, `nonprod`, or `prod`) that skips image build and Terraform deployment, syncs the latest certificate secret from the Acmebot Key Vault into the selected FTPS Container App, and then restarts it.
+- `azure-pipelines.yaml` also includes a manual `refreshSecretsEnvironment` switch (`none`, `nonprod`, or `prod`) that skips image build and Terraform deployment, re-syncs all FTPS runtime secrets from Key Vault into the selected Container App, and then restarts it.
 
 ## Key Vault Secrets
 

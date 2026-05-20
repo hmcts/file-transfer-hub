@@ -41,18 +41,6 @@ Certificates are renewed automatically by the Acmebot Function App every 90 days
 
 The FTPS Container App reads the certificate secret **at startup only**. After Acmebot has written the renewed certificate to Key Vault, you must restart the Container App for it to pick up the new certificate:
 
-#### Preferred: Azure DevOps pipeline switch
-
-Run the `azure-pipelines.yaml` pipeline manually and set `refreshCertificateEnvironment` to `nonprod` or `prod`.
-
-- `nonprod` restarts `hub-fth-ftps-server-nonprod` in `file-transfer-hub-nonprod-rg`
-- `prod` restarts `hub-fth-ftps-server-prod` in `file-transfer-hub-prod-rg`
-- `none` keeps the normal pipeline behavior
-
-When `refreshCertificateEnvironment` is set to `nonprod` or `prod`, the pipeline skips the normal image build and Terraform stages and only restarts the active Container App revision(s) for the selected environment.
-
-#### Alternative: Azure portal
-
 1. In the Azure portal, navigate to the resource group `file-transfer-hub-<env>-rg`.
 2. Open the Container App `hub-fth`.
 3. On the **Overview** page, click **Restart**.

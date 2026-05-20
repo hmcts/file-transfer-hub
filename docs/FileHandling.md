@@ -148,6 +148,94 @@ Once implemented, engineers should expect:
 - `retention_period` to represent the short-term retention window used by the storage workflow
 - `delete_after_days` to control when the `BlobRetentionPolicy` lifecycle deletes older blobs automatically
 
+---
+
+## FTPS credential rotation
+
+FTPS login credentials are stored as secrets in Key Vault and injected into the Container App at Terraform apply time. A plain Container App restart does **not** pick up a rotated password — the new value must be explicitly pushed to the running app.
+
+### How credentials are stored
+
+The pipeline reads the following Key Vault secrets and writes them into the Container App secret configuration when Terraform is applied:
+
+| Key Vault secret | Container App env var | Description |
+|---|---|---|
+| `ftps-local-password` | `FTPS_LOCAL_PASSWORD` | Primary FTPS login password |
+| `ho-moj-ftps-prod-password` *(prod only)* | `FTPS_ADDITIONAL_PASSWORD` | Secondary FTPS login password |
+
+The username counterparts follow the same pattern (`ftps-local-username` → `FTPS_LOCAL_USERNAME`, etc.).
+
+### Rotating a credential
+
+1. Update the secret value in Key Vault for the relevant environment:
+   - Nonprod: `file-tran-hub-nonprod-kv`
+   - Prod: `file-tran-hub-prod-kv`
+2. Run the pipeline with the `refreshSecretsEnvironment` switch to sync the new value to the Container App without a full Terraform apply (see below).
+
+### Resyncing secrets via the pipeline
+
+The `refreshSecretsEnvironment` pipeline switch reads all current FTPS credential secrets from Key Vault, updates the Container App secret configuration in-place, and restarts active revisions.
+
+1. In Azure DevOps, navigate to the **file-transfer-hub** pipeline.
+2. Click **Run pipeline**.
+3. Set:
+   - `refreshSecretsEnvironment` → `nonprod` or `prod`
+4. Optionally, set `sendLEDSNotificationEmail` → `true` to notify the LEDS External Service Team before the change is applied. See [email.md](email.md) for setup requirements.
+5. Click **Run**.
+
+The pipeline will:
+- Skip the image build and Terraform apply stages.
+- Optionally send a notification email to LEDS (if enabled).
+- Fetch each credential secret from Key Vault.
+- Call `az containerapp secret set` to update the in-use secret values.
+- Restart all active Container App revisions.
+
+> **Note:** Any files currently in the ephemeral upload directory will be lost on restart unless a persistent Azure File Share is mounted at `FTPS_LOCAL_UPLOAD_DIR`. See [Ephemeral storage risk](#ephemeral-storage-risk) above.
+
+---
+
+## FTPS credential rotation
+
+FTPS login credentials are stored as secrets in Key Vault and injected into the Container App at Terraform apply time. A plain Container App restart does **not** pick up a rotated password — the new value must be explicitly pushed to the running app.
+
+### How credentials are stored
+
+The pipeline reads the following Key Vault secrets and writes them into the Container App secret configuration when Terraform is applied:
+
+| Key Vault secret | Container App env var | Description |
+|---|---|---|
+| `ftps-local-password` | `FTPS_LOCAL_PASSWORD` | Primary FTPS login password |
+| `ho-moj-ftps-prod-password` *(prod only)* | `FTPS_ADDITIONAL_PASSWORD` | Secondary FTPS login password |
+
+The username counterparts follow the same pattern (`ftps-local-username` → `FTPS_LOCAL_USERNAME`, etc.).
+
+### Rotating a credential
+
+1. Update the secret value in Key Vault for the relevant environment:
+   - Nonprod: `file-tran-hub-nonprod-kv`
+   - Prod: `file-tran-hub-prod-kv`
+2. Run the pipeline with the `refreshSecretsEnvironment` switch to sync the new value to the Container App without a full Terraform apply (see below).
+
+### Resyncing secrets via the pipeline
+
+The `refreshSecretsEnvironment` pipeline switch reads all current FTPS credential secrets from Key Vault, updates the Container App secret configuration in-place, and restarts active revisions.
+
+1. In Azure DevOps, navigate to the **file-transfer-hub** pipeline.
+2. Click **Run pipeline**.
+3. Set:
+   - `refreshSecretsEnvironment` → `nonprod` or `prod`
+4. Optionally, set `sendLEDSNotificationEmail` → `true` to notify the LEDS External Service Team before the change is applied. See [email.md](email.md) for setup requirements.
+5. Click **Run**.
+
+The pipeline will:
+- Skip the image build and Terraform apply stages.
+- Optionally send a notification email to LEDS (if enabled).
+- Fetch each credential secret from Key Vault.
+- Call `az containerapp secret set` to update the in-use secret values.
+- Restart all active Container App revisions.
+
+> **Note:** Any files currently in the ephemeral upload directory will be lost on restart unless a persistent Azure File Share is mounted at `FTPS_LOCAL_UPLOAD_DIR`. See [Ephemeral storage risk](#ephemeral-storage-risk) above.
+
 Until that Terraform change lands, this section is design intent only and not a statement of current deployed behaviour.
 
 ## Manual testing

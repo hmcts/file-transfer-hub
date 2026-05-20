@@ -54,3 +54,32 @@ After the restart, confirm the new certificate is in use by connecting to the FT
 [ftps-entrypoint] Certificate file ready at /etc/proftpd/tls/ftps.pem
 [ftps-entrypoint] Prepared ProFTPD TLS material at /etc/proftpd/tls/runtime/server.pem
 ```
+
+## Reloading a renewed certificate via the pipeline
+
+Once Acmebot has written the renewed certificate to Key Vault, you can reload it into the Container App without a manual portal restart by using the `refreshCertificateEnvironment` pipeline switch.
+
+### Steps
+
+1. In Azure DevOps, navigate to the **file-transfer-hub** pipeline.
+2. Click **Run pipeline**.
+3. Leave all other parameters at their defaults and set:
+   - `refreshCertificateEnvironment` → `nonprod` or `prod` (whichever environment you are refreshing)
+4. Optionally, set `sendLEDSNotificationEmail` → `true` to notify the LEDS External Service Team before the change is applied. See [email.md](email.md) for setup requirements.
+5. Click **Run**.
+
+The pipeline will:
+- Skip the image build and Terraform apply stages.
+- Optionally send a notification email to LEDS (if enabled).
+- Read the current certificate secret from Key Vault.
+- Update the Container App secret in-place.
+- Restart all active Container App revisions to pick up the new certificate.
+
+### What counts as a successful reload
+
+After the pipeline completes, confirm the new certificate is in use by connecting to the FTPS endpoint with an FTPS client and inspecting the presented certificate's expiry date, or by checking the startup logs for:
+
+```
+[ftps-entrypoint] Certificate file ready at /etc/proftpd/tls/ftps.pem
+[ftps-entrypoint] Prepared ProFTPD TLS material at /etc/proftpd/tls/runtime/server.pem
+```

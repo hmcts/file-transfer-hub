@@ -9,6 +9,7 @@ This repository contains the Terraform and application code for the FTPS-based f
 - `app` contains the ProFTPD-based FTPS container and the `lftp` forwarding logic.
 - `azure-pipelines.yaml` includes a manual `refreshCertificateEnvironment` switch (`none`, `nonprod`, or `prod`) that skips image build and Terraform deployment, syncs the latest certificate secret from the Acmebot Key Vault into the selected FTPS Container App, and then restarts it.
 - `azure-pipelines.yaml` also includes a manual `refreshSecretsEnvironment` switch (`none`, `nonprod`, or `prod`) that skips image build and Terraform deployment, re-syncs all FTPS runtime secrets from Key Vault into the selected Container App, and then restarts it.
+- `azure-pipelines.yaml` includes an optional `sendLEDSNotificationEmail` switch for certificate and secret refresh runs. When enabled, the pipeline sends a pre-change LEDS notification email using the recipient and sender addresses stored in the service Key Vault before it starts the refresh stage.
 
 ## Key Vault Secrets
 
@@ -22,6 +23,14 @@ The FTPS runtime expects these Key Vault secrets to exist:
 - per-forward-target username/password secrets referenced from `ftps.forward_targets[*].username_secret_name` and `ftps.forward_targets[*].password_secret_name`
 - `ftps-certificate-pem`: FTPS server certificate in PEM format, a combined PEM bundle, or a base64-encoded PKCS#12 bundle. Combined content must include a leaf certificate that matches the private key.
 - `ftps-certificate-key-pem`: FTPS server private key in PEM format when the certificate secret is not already a combined PEM or PKCS#12 bundle
+
+The optional LEDS notification stage for refresh runs also expects these service Key Vault secrets when `sendLEDSNotificationEmail = true`:
+
+- `ftps-leds-notification-to-email`: recipient mailbox for the LEDS notification email
+- `ftps-leds-notification-from-email`: `From` and `Reply-To` address on the notification email
+- `ftps-leds-notification-mail-relay`: SMTP relay FQDN used to deliver the notification (`hostname` or `hostname:port`; plain SMTP, no authentication)
+
+The notification stage sends email via `curl` SMTP through the configured relay. No Graph API permissions are required.
 
 ## Environment Behavior
 

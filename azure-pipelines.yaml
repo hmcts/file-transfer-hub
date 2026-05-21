@@ -47,18 +47,18 @@ parameters:
     displayName: "Send LEDS notification email before certificate or secret refresh"
     type: boolean
     default: false
-  - name: ledsNotificationRecipientSecretName
-    displayName: "Key Vault secret name for the LEDS recipient email address"
+  - name: ledsNotificationRecipientEmailOverride
+    displayName: "Override Email Parameters - Recipient email (leave blank to use values stored in Key Vault)"
     type: string
-    default: ftps-leds-notification-to-email
-  - name: ledsNotificationSenderSecretName
-    displayName: "Key Vault secret name for the sender email address"
+    default: ""
+  - name: ledsNotificationSenderEmailOverride
+    displayName: "Override Email Parameters - Sender email (leave blank to use values stored in Key Vault)"
     type: string
-    default: ftps-leds-notification-from-email
-  - name: ledsNotificationMailRelaySecretName
-    displayName: "Key Vault secret name for the SMTP relay FQDN (hostname or hostname:port)"
+    default: ""
+  - name: ledsNotificationMailRelayOverride
+    displayName: "Override Email Parameters - SMTP relay (leave blank to use values stored in Key Vault)"
     type: string
-    default: ftps-leds-notification-mail-relay
+    default: ""
   - name: environment_components
     type: object
     default:
@@ -280,6 +280,7 @@ stages:
         pool:
           vmImage: ${{ variables.agentImage }}
         steps:
+          - checkout: self
           - task: AzureCLI@2
             displayName: "Send nonprod LEDS change notification"
             inputs:
@@ -292,11 +293,11 @@ stages:
 
                 ENVIRONMENT="nonprod"
                 KEY_VAULT_NAME="file-tran-hub-nonprod-kv"
-                RECIPIENT_SECRET_NAME="${{ parameters.ledsNotificationRecipientSecretName }}"
-                SENDER_SECRET_NAME="${{ parameters.ledsNotificationSenderSecretName }}"
-                MAIL_RELAY_SECRET_NAME="${{ parameters.ledsNotificationMailRelaySecretName }}"
+                RECIPIENT_SECRET_NAME="ftps-leds-notification-to-email"
+                SENDER_SECRET_NAME="ftps-leds-notification-from-email"
+                MAIL_RELAY_SECRET_NAME="ftps-leds-notification-mail-relay"
 
-                DOCS_DIR="$(System.DefaultWorkingDirectory)/file-transfer-hub/docs"
+                DOCS_DIR="$(System.DefaultWorkingDirectory)/docs"
                 if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" != "$ENVIRONMENT" ]]; then
                   TEMPLATE_PATH="$DOCS_DIR/leds-notification-certificate-change.txt"
                 else
@@ -312,23 +313,41 @@ stages:
                   CHANGE_TYPE="FTPS runtime secret update"
                 fi
 
-                RECIPIENT_EMAIL=$(az keyvault secret show \
-                  --vault-name "$KEY_VAULT_NAME" \
-                  --name "$RECIPIENT_SECRET_NAME" \
-                  --query value \
-                  --output tsv)
+                RECIPIENT_EMAIL_OVERRIDE="${{ parameters.ledsNotificationRecipientEmailOverride }}"
+                if [[ -n "$RECIPIENT_EMAIL_OVERRIDE" ]]; then
+                  RECIPIENT_EMAIL="$RECIPIENT_EMAIL_OVERRIDE"
+                  echo "Using recipient email override: $RECIPIENT_EMAIL"
+                else
+                  RECIPIENT_EMAIL=$(az keyvault secret show \
+                    --vault-name "$KEY_VAULT_NAME" \
+                    --name "$RECIPIENT_SECRET_NAME" \
+                    --query value \
+                    --output tsv)
+                fi
 
-                SENDER_EMAIL=$(az keyvault secret show \
-                  --vault-name "$KEY_VAULT_NAME" \
-                  --name "$SENDER_SECRET_NAME" \
-                  --query value \
-                  --output tsv)
+                SENDER_EMAIL_OVERRIDE="${{ parameters.ledsNotificationSenderEmailOverride }}"
+                if [[ -n "$SENDER_EMAIL_OVERRIDE" ]]; then
+                  SENDER_EMAIL="$SENDER_EMAIL_OVERRIDE"
+                  echo "Using sender email override: $SENDER_EMAIL"
+                else
+                  SENDER_EMAIL=$(az keyvault secret show \
+                    --vault-name "$KEY_VAULT_NAME" \
+                    --name "$SENDER_SECRET_NAME" \
+                    --query value \
+                    --output tsv)
+                fi
 
-                MAIL_RELAY=$(az keyvault secret show \
-                  --vault-name "$KEY_VAULT_NAME" \
-                  --name "$MAIL_RELAY_SECRET_NAME" \
-                  --query value \
-                  --output tsv)
+                MAIL_RELAY_OVERRIDE="${{ parameters.ledsNotificationMailRelayOverride }}"
+                if [[ -n "$MAIL_RELAY_OVERRIDE" ]]; then
+                  MAIL_RELAY="$MAIL_RELAY_OVERRIDE"
+                  echo "Using SMTP relay override: $MAIL_RELAY"
+                else
+                  MAIL_RELAY=$(az keyvault secret show \
+                    --vault-name "$KEY_VAULT_NAME" \
+                    --name "$MAIL_RELAY_SECRET_NAME" \
+                    --query value \
+                    --output tsv)
+                fi
 
                 if [[ -z "$RECIPIENT_EMAIL" || -z "$SENDER_EMAIL" || -z "$MAIL_RELAY" ]]; then
                   echo "Notification recipient, sender, or mail relay secret is empty in $KEY_VAULT_NAME" >&2
@@ -337,7 +356,7 @@ stages:
 
                 PIPELINE_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)&view=results"
                 REQUESTED_BY="$(Build.RequestedFor)"
-                TFVARS_FILE="$(System.DefaultWorkingDirectory)/file-transfer-hub/environments/$ENVIRONMENT/$ENVIRONMENT.tfvars"
+                TFVARS_FILE="$(System.DefaultWorkingDirectory)/environments/$ENVIRONMENT/$ENVIRONMENT.tfvars"
                 PUBLIC_ENDPOINT=$(grep 'public_endpoint' "$TFVARS_FILE" | sed 's/.*=\s*"\(.*\)".*/\1/')
 
                 EMAIL_BODY=$(sed \
@@ -379,6 +398,7 @@ stages:
         pool:
           vmImage: ${{ variables.agentImage }}
         steps:
+          - checkout: self
           - task: AzureCLI@2
             displayName: "Send prod LEDS change notification"
             inputs:
@@ -391,11 +411,11 @@ stages:
 
                 ENVIRONMENT="prod"
                 KEY_VAULT_NAME="file-tran-hub-prod-kv"
-                RECIPIENT_SECRET_NAME="${{ parameters.ledsNotificationRecipientSecretName }}"
-                SENDER_SECRET_NAME="${{ parameters.ledsNotificationSenderSecretName }}"
-                MAIL_RELAY_SECRET_NAME="${{ parameters.ledsNotificationMailRelaySecretName }}"
+                RECIPIENT_SECRET_NAME="ftps-leds-notification-to-email"
+                SENDER_SECRET_NAME="ftps-leds-notification-from-email"
+                MAIL_RELAY_SECRET_NAME="ftps-leds-notification-mail-relay"
 
-                DOCS_DIR="$(System.DefaultWorkingDirectory)/file-transfer-hub/docs"
+                DOCS_DIR="$(System.DefaultWorkingDirectory)/docs"
                 if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" != "$ENVIRONMENT" ]]; then
                   TEMPLATE_PATH="$DOCS_DIR/leds-notification-certificate-change.txt"
                 else
@@ -411,23 +431,41 @@ stages:
                   CHANGE_TYPE="FTPS runtime secret update"
                 fi
 
-                RECIPIENT_EMAIL=$(az keyvault secret show \
-                  --vault-name "$KEY_VAULT_NAME" \
-                  --name "$RECIPIENT_SECRET_NAME" \
-                  --query value \
-                  --output tsv)
+                RECIPIENT_EMAIL_OVERRIDE="${{ parameters.ledsNotificationRecipientEmailOverride }}"
+                if [[ -n "$RECIPIENT_EMAIL_OVERRIDE" ]]; then
+                  RECIPIENT_EMAIL="$RECIPIENT_EMAIL_OVERRIDE"
+                  echo "Using recipient email override: $RECIPIENT_EMAIL"
+                else
+                  RECIPIENT_EMAIL=$(az keyvault secret show \
+                    --vault-name "$KEY_VAULT_NAME" \
+                    --name "$RECIPIENT_SECRET_NAME" \
+                    --query value \
+                    --output tsv)
+                fi
 
-                SENDER_EMAIL=$(az keyvault secret show \
-                  --vault-name "$KEY_VAULT_NAME" \
-                  --name "$SENDER_SECRET_NAME" \
-                  --query value \
-                  --output tsv)
+                SENDER_EMAIL_OVERRIDE="${{ parameters.ledsNotificationSenderEmailOverride }}"
+                if [[ -n "$SENDER_EMAIL_OVERRIDE" ]]; then
+                  SENDER_EMAIL="$SENDER_EMAIL_OVERRIDE"
+                  echo "Using sender email override: $SENDER_EMAIL"
+                else
+                  SENDER_EMAIL=$(az keyvault secret show \
+                    --vault-name "$KEY_VAULT_NAME" \
+                    --name "$SENDER_SECRET_NAME" \
+                    --query value \
+                    --output tsv)
+                fi
 
-                MAIL_RELAY=$(az keyvault secret show \
-                  --vault-name "$KEY_VAULT_NAME" \
-                  --name "$MAIL_RELAY_SECRET_NAME" \
-                  --query value \
-                  --output tsv)
+                MAIL_RELAY_OVERRIDE="${{ parameters.ledsNotificationMailRelayOverride }}"
+                if [[ -n "$MAIL_RELAY_OVERRIDE" ]]; then
+                  MAIL_RELAY="$MAIL_RELAY_OVERRIDE"
+                  echo "Using SMTP relay override: $MAIL_RELAY"
+                else
+                  MAIL_RELAY=$(az keyvault secret show \
+                    --vault-name "$KEY_VAULT_NAME" \
+                    --name "$MAIL_RELAY_SECRET_NAME" \
+                    --query value \
+                    --output tsv)
+                fi
 
                 if [[ -z "$RECIPIENT_EMAIL" || -z "$SENDER_EMAIL" || -z "$MAIL_RELAY" ]]; then
                   echo "Notification recipient, sender, or mail relay secret is empty in $KEY_VAULT_NAME" >&2
@@ -436,7 +474,7 @@ stages:
 
                 PIPELINE_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)&view=results"
                 REQUESTED_BY="$(Build.RequestedFor)"
-                TFVARS_FILE="$(System.DefaultWorkingDirectory)/file-transfer-hub/environments/$ENVIRONMENT/$ENVIRONMENT.tfvars"
+                TFVARS_FILE="$(System.DefaultWorkingDirectory)/environments/$ENVIRONMENT/$ENVIRONMENT.tfvars"
                 PUBLIC_ENDPOINT=$(grep 'public_endpoint' "$TFVARS_FILE" | sed 's/.*=\s*"\(.*\)".*/\1/')
 
                 EMAIL_BODY=$(sed \

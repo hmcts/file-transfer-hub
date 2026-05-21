@@ -35,6 +35,30 @@ parameters:
       - none
       - nonprod
       - prod
+  - name: refreshSecretsEnvironment
+    displayName: "Sync all FTPS runtime secrets from Key Vault into the Container App"
+    type: string
+    default: none
+    values:
+      - none
+      - nonprod
+      - prod
+  - name: sendLEDSNotificationEmail
+    displayName: "Send LEDS notification email before certificate or secret refresh"
+    type: boolean
+    default: false
+  - name: ledsNotificationRecipientSecretName
+    displayName: "Key Vault secret name for the LEDS recipient email address"
+    type: string
+    default: ftps-leds-notification-to-email
+  - name: ledsNotificationSenderSecretName
+    displayName: "Key Vault secret name for the sender email address"
+    type: string
+    default: ftps-leds-notification-from-email
+  - name: ledsNotificationMailRelaySecretName
+    displayName: "Key Vault secret name for the SMTP relay FQDN (hostname or hostname:port)"
+    type: string
+    default: ftps-leds-notification-mail-relay
   - name: environment_components
     type: object
     default:
@@ -94,7 +118,7 @@ stages:
   - stage: AppBuildPublish
     displayName: "App Build & Publish"
     dependsOn: []
-    condition: and(succeeded(), eq('${{ parameters.refreshCertificateEnvironment }}', 'none'), ne('${{ parameters.refreshAlertsOnly }}', 'true'))
+    condition: and(succeeded(), eq('${{ parameters.refreshCertificateEnvironment }}', 'none'), eq('${{ parameters.refreshSecretsEnvironment }}', 'none'), ne('${{ parameters.refreshAlertsOnly }}', 'true'))
     jobs:
       - job: BuildAndPublish
         pool:
@@ -135,11 +159,12 @@ stages:
       - stage: ${{ deployment.deployment }}
         dependsOn: ${{ deployment.dependsOn }}
         ${{ if eq(deployment.component, 'core') }}:
-          condition: eq('${{ parameters.refreshCertificateEnvironment }}', 'none')
+          condition: and(eq('${{ parameters.refreshCertificateEnvironment }}', 'none'), eq('${{ parameters.refreshSecretsEnvironment }}', 'none'))
         ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'nonprod')) }}:
           condition: >-
             and(
               eq('${{ parameters.refreshCertificateEnvironment }}', 'none'),
+              eq('${{ parameters.refreshSecretsEnvironment }}', 'none'),
               succeeded('${{ deployment.environment }}_core'),
               in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
             )
@@ -154,6 +179,7 @@ stages:
           condition: >-
             and(
               eq('${{ parameters.refreshCertificateEnvironment }}', 'none'),
+              eq('${{ parameters.refreshSecretsEnvironment }}', 'none'),
               succeeded('${{ deployment.environment }}_core'),
               in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
             )
@@ -230,13 +256,227 @@ stages:
                         echo "##vso[task.setvariable variable=log_analytics_workspace_id;isOutput=true]$LOG_ANALYTICS_ID"
                         echo "##vso[task.setvariable variable=container_apps_subnet_id;isOutput=true]$SUBNET_ID"
 
-  - stage: RefreshCertificate
-    displayName: "Reload renewed certificate from Key Vault"
+  - stage: NotifyLEDS
+    displayName: "Send LEDS change notification"
     dependsOn:
       - TerraformPrecheck
     condition: >-
       and(
         succeeded('TerraformPrecheck'),
+        eq('${{ parameters.sendLEDSNotificationEmail }}', 'true'),
+        or(
+          ne('${{ parameters.refreshCertificateEnvironment }}', 'none'),
+          ne('${{ parameters.refreshSecretsEnvironment }}', 'none')
+        )
+      )
+    jobs:
+      - job: NotifyLEDSNonprod
+        displayName: "Send nonprod LEDS change notification"
+        condition: >-
+          or(
+            eq('${{ parameters.refreshCertificateEnvironment }}', 'nonprod'),
+            eq('${{ parameters.refreshSecretsEnvironment }}', 'nonprod')
+          )
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - task: AzureCLI@2
+            displayName: "Send nonprod LEDS change notification"
+            inputs:
+              azureSubscription: HMCTS-HUB-NONPROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+
+                ENVIRONMENT="nonprod"
+                KEY_VAULT_NAME="file-tran-hub-nonprod-kv"
+                RECIPIENT_SECRET_NAME="${{ parameters.ledsNotificationRecipientSecretName }}"
+                SENDER_SECRET_NAME="${{ parameters.ledsNotificationSenderSecretName }}"
+                MAIL_RELAY_SECRET_NAME="${{ parameters.ledsNotificationMailRelaySecretName }}"
+
+                DOCS_DIR="$(System.DefaultWorkingDirectory)/file-transfer-hub/docs"
+                if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" != "$ENVIRONMENT" ]]; then
+                  TEMPLATE_PATH="$DOCS_DIR/leds-notification-certificate-change.txt"
+                else
+                  TEMPLATE_PATH="$DOCS_DIR/leds-notification-credential-change.txt"
+                fi
+
+                CHANGE_TYPE="FTPS runtime update"
+                if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS certificate and runtime secret update"
+                elif [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS certificate update"
+                elif [[ "${{ parameters.refreshSecretsEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS runtime secret update"
+                fi
+
+                RECIPIENT_EMAIL=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "$RECIPIENT_SECRET_NAME" \
+                  --query value \
+                  --output tsv)
+
+                SENDER_EMAIL=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "$SENDER_SECRET_NAME" \
+                  --query value \
+                  --output tsv)
+
+                MAIL_RELAY=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "$MAIL_RELAY_SECRET_NAME" \
+                  --query value \
+                  --output tsv)
+
+                if [[ -z "$RECIPIENT_EMAIL" || -z "$SENDER_EMAIL" || -z "$MAIL_RELAY" ]]; then
+                  echo "Notification recipient, sender, or mail relay secret is empty in $KEY_VAULT_NAME" >&2
+                  exit 1
+                fi
+
+                PIPELINE_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)&view=results"
+                REQUESTED_BY="$(Build.RequestedFor)"
+                TFVARS_FILE="$(System.DefaultWorkingDirectory)/file-transfer-hub/environments/$ENVIRONMENT/$ENVIRONMENT.tfvars"
+                PUBLIC_ENDPOINT=$(grep 'public_endpoint' "$TFVARS_FILE" | sed 's/.*=\s*"\(.*\)".*/\1/')
+
+                EMAIL_BODY=$(sed \
+                  -e "s|{{CHANGE_TYPE}}|$CHANGE_TYPE|g" \
+                  -e "s|{{ENVIRONMENT}}|$ENVIRONMENT|g" \
+                  -e "s|{{PUBLIC_ENDPOINT}}|$PUBLIC_ENDPOINT|g" \
+                  -e "s|{{REQUESTED_BY}}|$REQUESTED_BY|g" \
+                  -e "s|{{BUILD_NUMBER}}|$(Build.BuildNumber)|g" \
+                  -e "s|{{PIPELINE_URL}}|$PIPELINE_URL|g" \
+                  "$TEMPLATE_PATH")
+
+                EMAIL_SUBJECT="File Transfer Hub $ENVIRONMENT $CHANGE_TYPE"
+                EMAIL_FILE=$(mktemp)
+                {
+                  printf 'From: HMCTS File Transfer Hub <%s>\n' "$SENDER_EMAIL"
+                  printf 'To: <%s>\n' "$RECIPIENT_EMAIL"
+                  printf 'Subject: %s\n' "$EMAIL_SUBJECT"
+                  printf 'Reply-To: %s\n' "$SENDER_EMAIL"
+                  printf 'MIME-Version: 1.0\n'
+                  printf 'Content-Type: text/plain; charset=UTF-8\n'
+                  printf '\n'
+                  printf '%s\n' "$EMAIL_BODY"
+                } > "$EMAIL_FILE"
+
+                echo "Sending LEDS notification email to $RECIPIENT_EMAIL via $MAIL_RELAY"
+                curl --silent --show-error \
+                  "smtp://$MAIL_RELAY" \
+                  --mail-from "$SENDER_EMAIL" \
+                  --mail-rcpt "$RECIPIENT_EMAIL" \
+                  --upload-file "$EMAIL_FILE"
+                rm -f "$EMAIL_FILE"
+      - job: NotifyLEDSProd
+        displayName: "Send prod LEDS change notification"
+        condition: >-
+          or(
+            eq('${{ parameters.refreshCertificateEnvironment }}', 'prod'),
+            eq('${{ parameters.refreshSecretsEnvironment }}', 'prod')
+          )
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - task: AzureCLI@2
+            displayName: "Send prod LEDS change notification"
+            inputs:
+              azureSubscription: HMCTS-HUB-PROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+
+                ENVIRONMENT="prod"
+                KEY_VAULT_NAME="file-tran-hub-prod-kv"
+                RECIPIENT_SECRET_NAME="${{ parameters.ledsNotificationRecipientSecretName }}"
+                SENDER_SECRET_NAME="${{ parameters.ledsNotificationSenderSecretName }}"
+                MAIL_RELAY_SECRET_NAME="${{ parameters.ledsNotificationMailRelaySecretName }}"
+
+                DOCS_DIR="$(System.DefaultWorkingDirectory)/file-transfer-hub/docs"
+                if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" != "$ENVIRONMENT" ]]; then
+                  TEMPLATE_PATH="$DOCS_DIR/leds-notification-certificate-change.txt"
+                else
+                  TEMPLATE_PATH="$DOCS_DIR/leds-notification-credential-change.txt"
+                fi
+
+                CHANGE_TYPE="FTPS runtime update"
+                if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS certificate and runtime secret update"
+                elif [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS certificate update"
+                elif [[ "${{ parameters.refreshSecretsEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS runtime secret update"
+                fi
+
+                RECIPIENT_EMAIL=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "$RECIPIENT_SECRET_NAME" \
+                  --query value \
+                  --output tsv)
+
+                SENDER_EMAIL=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "$SENDER_SECRET_NAME" \
+                  --query value \
+                  --output tsv)
+
+                MAIL_RELAY=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "$MAIL_RELAY_SECRET_NAME" \
+                  --query value \
+                  --output tsv)
+
+                if [[ -z "$RECIPIENT_EMAIL" || -z "$SENDER_EMAIL" || -z "$MAIL_RELAY" ]]; then
+                  echo "Notification recipient, sender, or mail relay secret is empty in $KEY_VAULT_NAME" >&2
+                  exit 1
+                fi
+
+                PIPELINE_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)&view=results"
+                REQUESTED_BY="$(Build.RequestedFor)"
+                TFVARS_FILE="$(System.DefaultWorkingDirectory)/file-transfer-hub/environments/$ENVIRONMENT/$ENVIRONMENT.tfvars"
+                PUBLIC_ENDPOINT=$(grep 'public_endpoint' "$TFVARS_FILE" | sed 's/.*=\s*"\(.*\)".*/\1/')
+
+                EMAIL_BODY=$(sed \
+                  -e "s|{{CHANGE_TYPE}}|$CHANGE_TYPE|g" \
+                  -e "s|{{ENVIRONMENT}}|$ENVIRONMENT|g" \
+                  -e "s|{{PUBLIC_ENDPOINT}}|$PUBLIC_ENDPOINT|g" \
+                  -e "s|{{REQUESTED_BY}}|$REQUESTED_BY|g" \
+                  -e "s|{{BUILD_NUMBER}}|$(Build.BuildNumber)|g" \
+                  -e "s|{{PIPELINE_URL}}|$PIPELINE_URL|g" \
+                  "$TEMPLATE_PATH")
+
+                EMAIL_SUBJECT="File Transfer Hub $ENVIRONMENT $CHANGE_TYPE"
+                EMAIL_FILE=$(mktemp)
+                {
+                  printf 'From: HMCTS File Transfer Hub <%s>\n' "$SENDER_EMAIL"
+                  printf 'To: <%s>\n' "$RECIPIENT_EMAIL"
+                  printf 'Subject: %s\n' "$EMAIL_SUBJECT"
+                  printf 'Reply-To: %s\n' "$SENDER_EMAIL"
+                  printf 'MIME-Version: 1.0\n'
+                  printf 'Content-Type: text/plain; charset=UTF-8\n'
+                  printf '\n'
+                  printf '%s\n' "$EMAIL_BODY"
+                } > "$EMAIL_FILE"
+
+                echo "Sending LEDS notification email to $RECIPIENT_EMAIL via $MAIL_RELAY"
+                curl --silent --show-error \
+                  "smtp://$MAIL_RELAY" \
+                  --mail-from "$SENDER_EMAIL" \
+                  --mail-rcpt "$RECIPIENT_EMAIL" \
+                  --upload-file "$EMAIL_FILE"
+                rm -f "$EMAIL_FILE"
+  - stage: RefreshCertificate
+    displayName: "Reload renewed certificate from Key Vault"
+    dependsOn:
+      - TerraformPrecheck
+      - NotifyLEDS
+    condition: >-
+      and(
+        succeeded('TerraformPrecheck'),
+        in(dependencies.NotifyLEDS.result, 'Succeeded', 'Skipped'),
         ne('${{ parameters.refreshCertificateEnvironment }}', 'none')
       )
     jobs:
@@ -380,6 +620,202 @@ stages:
                   --secrets "${SECRET_ARGS[@]}"
 
                 echo "Looking up active revisions for $CONTAINER_APP_NAME in $RESOURCE_GROUP"
+
+                ACTIVE_REVISIONS=$(az containerapp revision list \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "[?properties.active].name" \
+                  --output tsv)
+
+                if [[ -z "$ACTIVE_REVISIONS" ]]; then
+                  echo "No active revisions found for $CONTAINER_APP_NAME" >&2
+                  exit 1
+                fi
+
+                while IFS= read -r revision; do
+                  [[ -z "$revision" ]] && continue
+                  echo "Restarting revision: $revision"
+                  az containerapp revision restart \
+                    --name "$CONTAINER_APP_NAME" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --revision "$revision"
+                done <<< "$ACTIVE_REVISIONS"
+  - stage: RefreshSecrets
+    displayName: "Reload FTPS runtime secrets from Key Vault"
+    dependsOn:
+      - TerraformPrecheck
+      - NotifyLEDS
+    condition: >-
+      and(
+        succeeded('TerraformPrecheck'),
+        in(dependencies.NotifyLEDS.result, 'Succeeded', 'Skipped'),
+        ne('${{ parameters.refreshSecretsEnvironment }}', 'none')
+      )
+    jobs:
+      - job: RefreshNonprodContainerAppSecrets
+        displayName: "Refresh nonprod FTPS Container App secrets"
+        condition: eq('${{ parameters.refreshSecretsEnvironment }}', 'nonprod')
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - task: AzureCLI@2
+            displayName: "Refresh nonprod FTPS Container App secrets"
+            inputs:
+              azureSubscription: HMCTS-HUB-NONPROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                CONTAINER_APP_NAME="hub-fth-ftps-server-nonprod"
+                RESOURCE_GROUP="file-transfer-hub-nonprod-rg"
+
+                SECRET_MAPPINGS=(
+                  "FTPS_LOCAL_USER|file-tran-hub-nonprod-kv|ftps-local-username"
+                  "FTPS_LOCAL_PASSWORD|file-tran-hub-nonprod-kv|ftps-local-password"
+                  "FTPS_CERTIFICATE_PEM|acmedcdcftappsdemo|dtsft-demo-apps-hmcts-net"
+                  "FTPS_CERTIFICATE_KEY_PEM|acmedcdcftappsdemo|dtsft-demo-apps-hmcts-net"
+                  "FTPS_FORWARD_TARGET_0_USERNAME|file-tran-hub-nonprod-kv|ftps-storage-sftp-username"
+                  "FTPS_FORWARD_TARGET_0_PASSWORD|file-tran-hub-nonprod-kv|ftps-storage-sftp-password"
+                  "FTPS_FORWARD_TARGET_1_HOST|file-tran-hub-nonprod-kv|LEDS2BAIS-DEMO-FTPS-destination"
+                  "FTPS_FORWARD_TARGET_1_USERNAME|file-tran-hub-nonprod-kv|LEDS2BAIS-DEMO-FTPS-Username"
+                  "FTPS_FORWARD_TARGET_1_PASSWORD|file-tran-hub-nonprod-kv|LEDS2BAIS-DEMO-FTPS-Password"
+                  "FTPS_ADDITIONAL_USER|file-tran-hub-nonprod-kv|ho-moj-ftps-demo-username"
+                  "FTPS_ADDITIONAL_PASSWORD|file-tran-hub-nonprod-kv|ho-moj-ftps-demo-password"
+                )
+
+                declare -A SECRET_ARGS_BY_REF=()
+                SECRET_ARGS=()
+
+                for mapping in "${SECRET_MAPPINGS[@]}"; do
+                  IFS='|' read -r env_name key_vault_name key_vault_secret_name <<< "$mapping"
+
+                  secret_ref=$(az containerapp show \
+                    --name "$CONTAINER_APP_NAME" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --query "properties.template.containers[0].env[?name=='${env_name}'].secretRef | [0]" \
+                    --output tsv)
+
+                  if [[ -z "$secret_ref" ]]; then
+                    echo "$env_name secretRef was not found on $CONTAINER_APP_NAME" >&2
+                    exit 1
+                  fi
+
+                  secret_value=$(az keyvault secret show \
+                    --vault-name "$key_vault_name" \
+                    --name "$key_vault_secret_name" \
+                    --query value \
+                    --output tsv)
+
+                  if [[ -z "$secret_value" ]]; then
+                    echo "Key Vault secret $key_vault_secret_name in $key_vault_name returned an empty value" >&2
+                    exit 1
+                  fi
+
+                  SECRET_ARGS_BY_REF["$secret_ref"]="$secret_value"
+                done
+
+                for secret_ref in "${!SECRET_ARGS_BY_REF[@]}"; do
+                  SECRET_ARGS+=("$secret_ref=${SECRET_ARGS_BY_REF[$secret_ref]}")
+                done
+
+                echo "Syncing FTPS runtime secrets into $CONTAINER_APP_NAME"
+                az containerapp secret set \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --secrets "${SECRET_ARGS[@]}"
+
+                ACTIVE_REVISIONS=$(az containerapp revision list \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "[?properties.active].name" \
+                  --output tsv)
+
+                if [[ -z "$ACTIVE_REVISIONS" ]]; then
+                  echo "No active revisions found for $CONTAINER_APP_NAME" >&2
+                  exit 1
+                fi
+
+                while IFS= read -r revision; do
+                  [[ -z "$revision" ]] && continue
+                  echo "Restarting revision: $revision"
+                  az containerapp revision restart \
+                    --name "$CONTAINER_APP_NAME" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --revision "$revision"
+                done <<< "$ACTIVE_REVISIONS"
+      - job: RefreshProdContainerAppSecrets
+        displayName: "Refresh prod FTPS Container App secrets"
+        condition: eq('${{ parameters.refreshSecretsEnvironment }}', 'prod')
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - task: AzureCLI@2
+            displayName: "Refresh prod FTPS Container App secrets"
+            inputs:
+              azureSubscription: HMCTS-HUB-PROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                CONTAINER_APP_NAME="hub-fth-ftps-server-prod"
+                RESOURCE_GROUP="file-transfer-hub-prod-rg"
+
+                SECRET_MAPPINGS=(
+                  "FTPS_LOCAL_USER|file-tran-hub-prod-kv|ftps-local-username"
+                  "FTPS_LOCAL_PASSWORD|file-tran-hub-prod-kv|ftps-local-password"
+                  "FTPS_CERTIFICATE_PEM|acmehmctshubprodintsvc|dtsft-prod-apps-hmcts-net"
+                  "FTPS_CERTIFICATE_KEY_PEM|acmehmctshubprodintsvc|dtsft-prod-apps-hmcts-net"
+                  "FTPS_FORWARD_TARGET_0_USERNAME|file-tran-hub-prod-kv|ftps-storage-sftp-username-v2"
+                  "FTPS_FORWARD_TARGET_0_PASSWORD|file-tran-hub-prod-kv|ftps-storage-sftp-password-v2"
+                  "FTPS_FORWARD_TARGET_1_HOST|file-tran-hub-prod-kv|LEDS2BAIS-PROD-FTPS-destination"
+                  "FTPS_FORWARD_TARGET_1_USERNAME|file-tran-hub-prod-kv|LEDS2BAIS-PROD-FTPS-Username"
+                  "FTPS_FORWARD_TARGET_1_PASSWORD|file-tran-hub-prod-kv|LEDS2BAIS-PROD-FTPS-Password"
+                  "FTPS_ADDITIONAL_USER|file-tran-hub-prod-kv|ho-moj-ftps-prod-username"
+                  "FTPS_ADDITIONAL_PASSWORD|file-tran-hub-prod-kv|ho-moj-ftps-prod-password"
+                )
+
+                declare -A SECRET_ARGS_BY_REF=()
+                SECRET_ARGS=()
+
+                for mapping in "${SECRET_MAPPINGS[@]}"; do
+                  IFS='|' read -r env_name key_vault_name key_vault_secret_name <<< "$mapping"
+
+                  secret_ref=$(az containerapp show \
+                    --name "$CONTAINER_APP_NAME" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --query "properties.template.containers[0].env[?name=='${env_name}'].secretRef | [0]" \
+                    --output tsv)
+
+                  if [[ -z "$secret_ref" ]]; then
+                    echo "$env_name secretRef was not found on $CONTAINER_APP_NAME" >&2
+                    exit 1
+                  fi
+
+                  secret_value=$(az keyvault secret show \
+                    --vault-name "$key_vault_name" \
+                    --name "$key_vault_secret_name" \
+                    --query value \
+                    --output tsv)
+
+                  if [[ -z "$secret_value" ]]; then
+                    echo "Key Vault secret $key_vault_secret_name in $key_vault_name returned an empty value" >&2
+                    exit 1
+                  fi
+
+                  SECRET_ARGS_BY_REF["$secret_ref"]="$secret_value"
+                done
+
+                for secret_ref in "${!SECRET_ARGS_BY_REF[@]}"; do
+                  SECRET_ARGS+=("$secret_ref=${SECRET_ARGS_BY_REF[$secret_ref]}")
+                done
+
+                echo "Syncing FTPS runtime secrets into $CONTAINER_APP_NAME"
+                az containerapp secret set \
+                  --name "$CONTAINER_APP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --secrets "${SECRET_ARGS[@]}"
 
                 ACTIVE_REVISIONS=$(az containerapp revision list \
                   --name "$CONTAINER_APP_NAME" \

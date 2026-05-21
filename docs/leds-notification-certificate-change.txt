@@ -1,0 +1,61 @@
+Dear LEDS External Service Team,
+
+This is an automated notification from HMCTS File Transfer Hub ({{ENVIRONMENT}} environment).
+
+ACTION REQUIRED: The TLS certificate used by the LEDS FTPS Gateway has been renewed
+and will take effect shortly. You must update your SFTP/FTPS client configuration before
+connecting to the gateway again.
+
+--------------------------------------------------------------------------------
+WHAT IS THE LEDS FTPS GATEWAY?
+--------------------------------------------------------------------------------
+
+The LEDS FTPS Gateway is an HMCTS-operated FTPS service that allows your systems to
+securely transfer files to His Majesty's Courts and Tribunals Service. Your server
+connects to the HMCTS LEDS FTPS Gateway endpoint at {{PUBLIC_ENDPOINT}} using
+implicit FTPS (port 990) and authenticates with a username and password. HMCTS then
+forwards the transferred files to their destination within the HMCTS estate.
+
+--------------------------------------------------------------------------------
+WHAT HAS CHANGED?
+--------------------------------------------------------------------------------
+
+The TLS server certificate presented by the LEDS FTPS Gateway has been renewed.
+This happens approximately every 90 days as part of routine certificate lifecycle
+management. The new certificate is issued by Let's Encrypt.
+
+You DO NOT need to change your login credentials (username or password).
+You DO need to accept or trust the new server certificate in your client configuration.
+
+--------------------------------------------------------------------------------
+WHAT DO YOU NEED TO DO?
+--------------------------------------------------------------------------------
+
+Before your next connection attempt, please:
+
+  1. Update your FTPS client or server configuration to trust the renewed certificate
+     from the LEDS FTPS Gateway endpoint.
+  2. If your client pins or stores the previous certificate fingerprint, replace it
+     with the fingerprint of the new certificate.
+  3. Confirm connectivity by performing a test file transfer.
+
+If you use certificate trust stores or explicit certificate pinning, contact the
+HMCTS File Transfer Hub team using the details below so we can share the new
+certificate details directly.
+
+--------------------------------------------------------------------------------
+CHANGE DETAILS
+--------------------------------------------------------------------------------
+
+Environment  : {{ENVIRONMENT}}
+Requested by : {{REQUESTED_BY}}
+Pipeline run : {{BUILD_NUMBER}}
+Pipeline link: {{PIPELINE_URL}}
+
+--------------------------------------------------------------------------------
+
+If you have any questions or experience issues connecting after this change, please
+contact the HMCTS File Transfer Hub support team.
+
+Regards,
+HMCTS File Transfer Hub support

@@ -280,6 +280,8 @@ stages:
         pool:
           vmImage: ${{ variables.agentImage }}
         steps:
+          - checkout: self
+            path: s/file-transfer-hub
           - task: AzureCLI@2
             displayName: "Send nonprod LEDS change notification"
             inputs:
@@ -379,6 +381,8 @@ stages:
         pool:
           vmImage: ${{ variables.agentImage }}
         steps:
+          - checkout: self
+            path: s/file-transfer-hub
           - task: AzureCLI@2
             displayName: "Send prod LEDS change notification"
             inputs:

@@ -52,15 +52,15 @@ parameters:
     type: string
     default: ""
   - name: ledsNotificationRecipientSecretName
-    displayName: "Key Vault secret name holding the recipient email (used when override is blank)"
+    displayName: "[Advanced] Recipient email — Key Vault secret name (leave as default)"
     type: string
     default: ftps-leds-notification-to-email
   - name: ledsNotificationSenderSecretName
-    displayName: "Key Vault secret name holding the sender email address"
+    displayName: "[Advanced] Sender email — Key Vault secret name (leave as default)"
     type: string
     default: ftps-leds-notification-from-email
   - name: ledsNotificationMailRelaySecretName
-    displayName: "Key Vault secret name holding the SMTP relay FQDN (hostname or hostname:port)"
+    displayName: "[Advanced] SMTP relay — Key Vault secret name (leave as default)"
     type: string
     default: ftps-leds-notification-mail-relay
   - name: environment_components

@@ -43,6 +43,10 @@ parameters:
       - none
       - nonprod
       - prod
+  - name: sendLEDSNotificationEmail
+    displayName: "Send LEDS change notification email"
+    type: boolean
+    default: false
 
 variables:
   - name: timeoutInMinutes
@@ -122,6 +126,215 @@ stages:
       timeoutInMinutes: ${{ variables.timeoutInMinutes }}
       product: ${{ variables.product }}
       terraformInitSubscription: ${{ variables.terraformInitSubscription }}
+
+  - stage: NotifyLEDS
+    displayName: "Send LEDS change notification"
+    dependsOn:
+      - RefreshCertificate
+      - RefreshSecrets
+    condition: >-
+      and(
+        eq('${{ parameters.sendLEDSNotificationEmail }}', 'true'),
+        in(dependencies.RefreshCertificate.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'),
+        in(dependencies.RefreshSecrets.result, 'Succeeded', 'SucceededWithIssues', 'Skipped')
+      )
+    jobs:
+      - job: NotifyLEDSNonprod
+        displayName: "Send nonprod LEDS change notification"
+        condition: >-
+          or(
+            eq('${{ parameters.refreshCertificateEnvironment }}', 'nonprod'),
+            eq('${{ parameters.refreshSecretsEnvironment }}', 'nonprod')
+          )
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: "Send nonprod LEDS change notification"
+            inputs:
+              azureSubscription: HMCTS-HUB-NONPROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+
+                ENVIRONMENT="nonprod"
+                KEY_VAULT_NAME="file-tran-hub-nonprod-kv"
+
+                DOCS_DIR="$(System.DefaultWorkingDirectory)/docs"
+                if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" != "$ENVIRONMENT" ]]; then
+                  TEMPLATE_PATH="$DOCS_DIR/leds-notification-certificate-change.txt"
+                else
+                  TEMPLATE_PATH="$DOCS_DIR/leds-notification-credential-change.txt"
+                fi
+
+                CHANGE_TYPE="FTPS runtime update"
+                if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS certificate and runtime secret update"
+                elif [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS certificate update"
+                elif [[ "${{ parameters.refreshSecretsEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS runtime secret update"
+                fi
+
+                RECIPIENT_EMAIL=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "ftps-leds-notification-to-email" \
+                  --query value \
+                  --output tsv)
+
+                SENDER_EMAIL=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "ftps-leds-notification-from-email" \
+                  --query value \
+                  --output tsv)
+
+                MAIL_RELAY=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "ftps-leds-notification-mail-relay" \
+                  --query value \
+                  --output tsv)
+
+                if [[ -z "$RECIPIENT_EMAIL" || -z "$SENDER_EMAIL" || -z "$MAIL_RELAY" ]]; then
+                  echo "Notification recipient, sender, or mail relay secret is empty in $KEY_VAULT_NAME" >&2
+                  exit 1
+                fi
+
+                PIPELINE_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)&view=results"
+                REQUESTED_BY="$(Build.RequestedFor)"
+                TFVARS_FILE="$(System.DefaultWorkingDirectory)/environments/$ENVIRONMENT/$ENVIRONMENT.tfvars"
+                PUBLIC_ENDPOINT=$(grep 'public_endpoint' "$TFVARS_FILE" | sed 's/.*=\s*"\(.*\)".*/\1/')
+
+                EMAIL_BODY=$(sed \
+                  -e "s|{{CHANGE_TYPE}}|$CHANGE_TYPE|g" \
+                  -e "s|{{ENVIRONMENT}}|$ENVIRONMENT|g" \
+                  -e "s|{{PUBLIC_ENDPOINT}}|$PUBLIC_ENDPOINT|g" \
+                  -e "s|{{REQUESTED_BY}}|$REQUESTED_BY|g" \
+                  -e "s|{{BUILD_NUMBER}}|$(Build.BuildNumber)|g" \
+                  -e "s|{{PIPELINE_URL}}|$PIPELINE_URL|g" \
+                  "$TEMPLATE_PATH")
+
+                EMAIL_SUBJECT="File Transfer Hub $ENVIRONMENT $CHANGE_TYPE"
+                EMAIL_FILE=$(mktemp)
+                {
+                  printf 'From: HMCTS File Transfer Hub <%s>\n' "$SENDER_EMAIL"
+                  printf 'To: <%s>\n' "$RECIPIENT_EMAIL"
+                  printf 'Subject: %s\n' "$EMAIL_SUBJECT"
+                  printf 'Reply-To: %s\n' "$SENDER_EMAIL"
+                  printf 'MIME-Version: 1.0\n'
+                  printf 'Content-Type: text/plain; charset=UTF-8\n'
+                  printf '\n'
+                  printf '%s\n' "$EMAIL_BODY"
+                } > "$EMAIL_FILE"
+
+                echo "Sending LEDS notification email to $RECIPIENT_EMAIL via $MAIL_RELAY"
+                trap 'rm -f "$EMAIL_FILE"' EXIT
+                curl --silent --show-error --fail-with-body \
+                  "smtp://$MAIL_RELAY" \
+                  --mail-from "$SENDER_EMAIL" \
+                  --mail-rcpt "$RECIPIENT_EMAIL" \
+                  --upload-file "$EMAIL_FILE"
+                rm -f "$EMAIL_FILE"
+      - job: NotifyLEDSProd
+        displayName: "Send prod LEDS change notification"
+        condition: >-
+          or(
+            eq('${{ parameters.refreshCertificateEnvironment }}', 'prod'),
+            eq('${{ parameters.refreshSecretsEnvironment }}', 'prod')
+          )
+        pool:
+          vmImage: ${{ variables.agentImage }}
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: "Send prod LEDS change notification"
+            inputs:
+              azureSubscription: HMCTS-HUB-PROD-INTSVC
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+
+                ENVIRONMENT="prod"
+                KEY_VAULT_NAME="file-tran-hub-prod-kv"
+
+                DOCS_DIR="$(System.DefaultWorkingDirectory)/docs"
+                if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" != "$ENVIRONMENT" ]]; then
+                  TEMPLATE_PATH="$DOCS_DIR/leds-notification-certificate-change.txt"
+                else
+                  TEMPLATE_PATH="$DOCS_DIR/leds-notification-credential-change.txt"
+                fi
+
+                CHANGE_TYPE="FTPS runtime update"
+                if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS certificate and runtime secret update"
+                elif [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS certificate update"
+                elif [[ "${{ parameters.refreshSecretsEnvironment }}" == "$ENVIRONMENT" ]]; then
+                  CHANGE_TYPE="FTPS runtime secret update"
+                fi
+
+                RECIPIENT_EMAIL=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "ftps-leds-notification-to-email" \
+                  --query value \
+                  --output tsv)
+
+                SENDER_EMAIL=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "ftps-leds-notification-from-email" \
+                  --query value \
+                  --output tsv)
+
+                MAIL_RELAY=$(az keyvault secret show \
+                  --vault-name "$KEY_VAULT_NAME" \
+                  --name "ftps-leds-notification-mail-relay" \
+                  --query value \
+                  --output tsv)
+
+                if [[ -z "$RECIPIENT_EMAIL" || -z "$SENDER_EMAIL" || -z "$MAIL_RELAY" ]]; then
+                  echo "Notification recipient, sender, or mail relay secret is empty in $KEY_VAULT_NAME" >&2
+                  exit 1
+                fi
+
+                PIPELINE_URL="$(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)&view=results"
+                REQUESTED_BY="$(Build.RequestedFor)"
+                TFVARS_FILE="$(System.DefaultWorkingDirectory)/environments/$ENVIRONMENT/$ENVIRONMENT.tfvars"
+                PUBLIC_ENDPOINT=$(grep 'public_endpoint' "$TFVARS_FILE" | sed 's/.*=\s*"\(.*\)".*/\1/')
+
+                EMAIL_BODY=$(sed \
+                  -e "s|{{CHANGE_TYPE}}|$CHANGE_TYPE|g" \
+                  -e "s|{{ENVIRONMENT}}|$ENVIRONMENT|g" \
+                  -e "s|{{PUBLIC_ENDPOINT}}|$PUBLIC_ENDPOINT|g" \
+                  -e "s|{{REQUESTED_BY}}|$REQUESTED_BY|g" \
+                  -e "s|{{BUILD_NUMBER}}|$(Build.BuildNumber)|g" \
+                  -e "s|{{PIPELINE_URL}}|$PIPELINE_URL|g" \
+                  "$TEMPLATE_PATH")
+
+                EMAIL_SUBJECT="File Transfer Hub $ENVIRONMENT $CHANGE_TYPE"
+                EMAIL_FILE=$(mktemp)
+                {
+                  printf 'From: HMCTS File Transfer Hub <%s>\n' "$SENDER_EMAIL"
+                  printf 'To: <%s>\n' "$RECIPIENT_EMAIL"
+                  printf 'Subject: %s\n' "$EMAIL_SUBJECT"
+                  printf 'Reply-To: %s\n' "$SENDER_EMAIL"
+                  printf 'MIME-Version: 1.0\n'
+                  printf 'Content-Type: text/plain; charset=UTF-8\n'
+                  printf '\n'
+                  printf '%s\n' "$EMAIL_BODY"
+                } > "$EMAIL_FILE"
+
+                echo "Sending LEDS notification email to $RECIPIENT_EMAIL via $MAIL_RELAY"
+                trap 'rm -f "$EMAIL_FILE"' EXIT
+                curl --silent --show-error --fail-with-body \
+                  "smtp://$MAIL_RELAY" \
+                  --mail-from "$SENDER_EMAIL" \
+                  --mail-rcpt "$RECIPIENT_EMAIL" \
+                  --upload-file "$EMAIL_FILE"
+                rm -f "$EMAIL_FILE"
 
   - stage: RefreshCertificate
     displayName: "Reload renewed certificate from Key Vault"

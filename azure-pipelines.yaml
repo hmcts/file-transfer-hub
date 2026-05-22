@@ -77,7 +77,7 @@ stages:
   - stage: TerraformPrecheck
     dependsOn: []
     jobs:
-      - job:
+      - job: TerraformPrecheck
         pool:
           vmImage: ${{ variables.agentImage }}
         steps:
@@ -526,7 +526,8 @@ stages:
                   --output tsv)
 
                 if [[ -z "$CERT_SECRET_REF" ]]; then
-                  echo "FTPS_CERTIFICATE_PEM secretRef was not found on $CONTAINER_APP_NAME" >&2
+                  echo "FTPS_CERTIFICATE_PEM secretRef was not found on $CONTAINER_APP_NAME"                  git status
+                  git --no-pager diff -- azure-pipelines.yaml pipeline-templates/deployment-stages.yaml >&2
                   exit 1
                 fi
 

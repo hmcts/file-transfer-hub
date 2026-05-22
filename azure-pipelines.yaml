@@ -48,44 +48,17 @@ parameters:
     type: boolean
     default: false
   - name: ledsNotificationRecipientEmailOverride
-    displayName: "Override Email Parameters - Recipient email (leave blank to use values stored in Key Vault)"
+    displayName: "Recipient email override (blank = use Key Vault)"
     type: string
     default: ""
   - name: ledsNotificationSenderEmailOverride
-    displayName: "Override Email Parameters - Sender email (leave blank to use values stored in Key Vault)"
+    displayName: "Sender email override (blank = use Key Vault)"
     type: string
     default: ""
   - name: ledsNotificationMailRelayOverride
-    displayName: "Override Email Parameters - SMTP relay (leave blank to use values stored in Key Vault)"
+    displayName: "SMTP relay override (blank = use Key Vault)"
     type: string
     default: ""
-  - name: environment_components
-    type: object
-    default:
-      - deployment: "nonprod_core"
-        environment: "nonprod"
-        component: "core"
-        service_connection: "HMCTS-HUB-NONPROD-INTSVC"
-        dependsOn: "TerraformPrecheck"
-      - deployment: "nonprod_container_app"
-        environment: "nonprod"
-        component: "container-app"
-        service_connection: "HMCTS-HUB-NONPROD-INTSVC"
-        dependsOn:
-          - "nonprod_core"
-          - "AppBuildPublish"
-      - deployment: "prod_core"
-        environment: "prod"
-        component: "core"
-        service_connection: "HMCTS-HUB-PROD-INTSVC"
-        dependsOn: "nonprod_core"
-      - deployment: "prod_container_app"
-        environment: "prod"
-        component: "container-app"
-        service_connection: "HMCTS-HUB-PROD-INTSVC"
-        dependsOn:
-          - "prod_core"
-          - "nonprod_container_app"
 
 variables:
   - name: timeoutInMinutes
@@ -155,106 +128,16 @@ stages:
                   -t $(imageRepository):$BRANCH_NAME-$(Build.BuildId) \
                   .
 
-  - ${{ each deployment in parameters.environment_components }}:
-      - stage: ${{ deployment.deployment }}
-        dependsOn: ${{ deployment.dependsOn }}
-        ${{ if eq(deployment.component, 'core') }}:
-          condition: and(eq('${{ parameters.refreshCertificateEnvironment }}', 'none'), eq('${{ parameters.refreshSecretsEnvironment }}', 'none'))
-        ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'nonprod')) }}:
-          condition: >-
-            and(
-              eq('${{ parameters.refreshCertificateEnvironment }}', 'none'),
-              eq('${{ parameters.refreshSecretsEnvironment }}', 'none'),
-              succeeded('${{ deployment.environment }}_core'),
-              in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
-            )
-          variables:
-            - name: log_analytics_workspace_id
-              value: $[stageDependencies.${{ deployment.environment
-                }}_core.TerraformPlanApply.outputs['terraformOutputs.log_analytics_workspace_id']]
-            - name: container_apps_subnet_id
-              value: $[stageDependencies.${{ deployment.environment
-                }}_core.TerraformPlanApply.outputs['terraformOutputs.container_apps_subnet_id']]
-        ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'prod')) }}:
-          condition: >-
-            and(
-              eq('${{ parameters.refreshCertificateEnvironment }}', 'none'),
-              eq('${{ parameters.refreshSecretsEnvironment }}', 'none'),
-              succeeded('${{ deployment.environment }}_core'),
-              in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
-            )
-          variables:
-            - name: log_analytics_workspace_id
-              value: $[stageDependencies.${{ deployment.environment
-                }}_core.TerraformPlanApply.outputs['terraformOutputs.log_analytics_workspace_id']]
-            - name: container_apps_subnet_id
-              value: $[stageDependencies.${{ deployment.environment
-                }}_core.TerraformPlanApply.outputs['terraformOutputs.container_apps_subnet_id']]
-        jobs:
-          - job: TerraformPlanApply
-            pool: hmcts-cftptl-agent-pool
-            timeoutInMinutes: ${{ variables.timeoutInMinutes }}
-            steps:
-              - ${{ if eq(deployment.component, 'container-app') }}:
-                  - task: AzureCLI@2
-                    displayName: "Resolve container app image"
-                    inputs:
-                      azureSubscription: ${{ deployment.service_connection }}
-                      scriptType: bash
-                      scriptLocation: inlineScript
-                      inlineScript: |
-                        REFRESH_ALERTS_ONLY="${{ parameters.refreshAlertsOnly }}"
-                        if [[ "${REFRESH_ALERTS_ONLY,,}" == "true" ]]; then
-                          echo "Refresh-alerts-only: looking up current container app image"
-                          CURRENT_IMAGE=$(az containerapp show \
-                            --name "hub-fth-ftps-server-${{ deployment.environment }}" \
-                            --resource-group "file-transfer-hub-${{ deployment.environment }}-rg" \
-                            --query "properties.template.containers[0].image" --output tsv)
-                          echo "Resolved image: $CURRENT_IMAGE"
-                          echo "##vso[task.setvariable variable=container_app_image]$CURRENT_IMAGE"
-                        else
-                          echo "##vso[task.setvariable variable=container_app_image]hmctsprod.azurecr.io/$(imageRepository):$(Build.BuildId)"
-                        fi
-              - template: steps/terraform.yaml@cnp-azuredevops-libraries
-                parameters:
-                  overrideAction: ${{ parameters.overrideAction }}
-                  environment: ${{ deployment.environment}}
-                  component: ${{ deployment.component }}
-                  serviceConnection: ${{ deployment.service_connection }}
-                  product: ${{ variables.product }}
-                  terraformInitSubscription: ${{ variables.terraformInitSubscription }}
-                  ${{ if eq(deployment.environment, 'nonprod') }}:
-                    backendResourceGroupName: azure-control-stg-rg
-                  ${{ if eq(deployment.component, 'container-app') }}:
-                    planCommandOptions: >-
-                      -var
-                      "log_analytics_workspace_id=$(log_analytics_workspace_id)"
-                      -var
-                      "container_apps_subnet_id=$(container_apps_subnet_id)"
-                      -var
-                      "container_app_image=$(container_app_image)"
-              - ${{ if eq(deployment.component, 'core') }}:
-                  - task: AzureCLI@2
-                    name: terraformOutputs
-                    displayName: "Capture Terraform Outputs"
-                    inputs:
-                      azureSubscription: ${{ deployment.service_connection }}
-                      scriptType: bash
-                      scriptLocation: inlineScript
-                      addSpnToEnvironment: true
-                      inlineScript: |
-                        cd $(System.DefaultWorkingDirectory)/file-transfer-hub/components/core
-
-                        export ARM_CLIENT_ID=$servicePrincipalId
-                        export ARM_CLIENT_SECRET=$servicePrincipalKey
-                        export ARM_TENANT_ID=$tenantId
-                        export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-                        LOG_ANALYTICS_ID=$(terraform output -raw log_analytics_workspace_id)
-                        SUBNET_ID=$(terraform output -raw container_apps_subnet_id)
-
-                        echo "##vso[task.setvariable variable=log_analytics_workspace_id;isOutput=true]$LOG_ANALYTICS_ID"
-                        echo "##vso[task.setvariable variable=container_apps_subnet_id;isOutput=true]$SUBNET_ID"
+  - template: pipeline-templates/deployment-stages.yaml
+    parameters:
+      overrideAction: ${{ parameters.overrideAction }}
+      refreshCertificateEnvironment: ${{ parameters.refreshCertificateEnvironment }}
+      refreshSecretsEnvironment: ${{ parameters.refreshSecretsEnvironment }}
+      refreshAlertsOnly: ${{ parameters.refreshAlertsOnly }}
+      agentImage: ${{ variables.agentImage }}
+      timeoutInMinutes: ${{ variables.timeoutInMinutes }}
+      product: ${{ variables.product }}
+      terraformInitSubscription: ${{ variables.terraformInitSubscription }}
 
   - stage: NotifyLEDS
     displayName: "Send LEDS change notification"
@@ -283,6 +166,10 @@ stages:
           - checkout: self
           - task: AzureCLI@2
             displayName: "Send nonprod LEDS change notification"
+            env:
+              RECIPIENT_EMAIL_OVERRIDE: ${{ parameters.ledsNotificationRecipientEmailOverride }}
+              SENDER_EMAIL_OVERRIDE: ${{ parameters.ledsNotificationSenderEmailOverride }}
+              MAIL_RELAY_OVERRIDE: ${{ parameters.ledsNotificationMailRelayOverride }}
             inputs:
               azureSubscription: HMCTS-HUB-NONPROD-INTSVC
               scriptType: bash
@@ -296,6 +183,10 @@ stages:
                 RECIPIENT_SECRET_NAME="ftps-leds-notification-to-email"
                 SENDER_SECRET_NAME="ftps-leds-notification-from-email"
                 MAIL_RELAY_SECRET_NAME="ftps-leds-notification-mail-relay"
+
+                RECIPIENT_EMAIL_OVERRIDE="${RECIPIENT_EMAIL_OVERRIDE:-}"
+                SENDER_EMAIL_OVERRIDE="${SENDER_EMAIL_OVERRIDE:-}"
+                MAIL_RELAY_OVERRIDE="${MAIL_RELAY_OVERRIDE:-}"
 
                 DOCS_DIR="$(System.DefaultWorkingDirectory)/docs"
                 if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" != "$ENVIRONMENT" ]]; then
@@ -313,7 +204,6 @@ stages:
                   CHANGE_TYPE="FTPS runtime secret update"
                 fi
 
-                RECIPIENT_EMAIL_OVERRIDE="${{ parameters.ledsNotificationRecipientEmailOverride }}"
                 if [[ -n "$RECIPIENT_EMAIL_OVERRIDE" ]]; then
                   RECIPIENT_EMAIL="$RECIPIENT_EMAIL_OVERRIDE"
                   echo "Using recipient email override: $RECIPIENT_EMAIL"
@@ -325,7 +215,6 @@ stages:
                     --output tsv)
                 fi
 
-                SENDER_EMAIL_OVERRIDE="${{ parameters.ledsNotificationSenderEmailOverride }}"
                 if [[ -n "$SENDER_EMAIL_OVERRIDE" ]]; then
                   SENDER_EMAIL="$SENDER_EMAIL_OVERRIDE"
                   echo "Using sender email override: $SENDER_EMAIL"
@@ -337,7 +226,6 @@ stages:
                     --output tsv)
                 fi
 
-                MAIL_RELAY_OVERRIDE="${{ parameters.ledsNotificationMailRelayOverride }}"
                 if [[ -n "$MAIL_RELAY_OVERRIDE" ]]; then
                   MAIL_RELAY="$MAIL_RELAY_OVERRIDE"
                   echo "Using SMTP relay override: $MAIL_RELAY"
@@ -382,7 +270,8 @@ stages:
                 } > "$EMAIL_FILE"
 
                 echo "Sending LEDS notification email to $RECIPIENT_EMAIL via $MAIL_RELAY"
-                curl --silent --show-error \
+                trap 'rm -f "$EMAIL_FILE"' EXIT
+                curl --silent --show-error --fail-with-body \
                   "smtp://$MAIL_RELAY" \
                   --mail-from "$SENDER_EMAIL" \
                   --mail-rcpt "$RECIPIENT_EMAIL" \
@@ -401,6 +290,10 @@ stages:
           - checkout: self
           - task: AzureCLI@2
             displayName: "Send prod LEDS change notification"
+            env:
+              RECIPIENT_EMAIL_OVERRIDE: ${{ parameters.ledsNotificationRecipientEmailOverride }}
+              SENDER_EMAIL_OVERRIDE: ${{ parameters.ledsNotificationSenderEmailOverride }}
+              MAIL_RELAY_OVERRIDE: ${{ parameters.ledsNotificationMailRelayOverride }}
             inputs:
               azureSubscription: HMCTS-HUB-PROD-INTSVC
               scriptType: bash
@@ -414,6 +307,10 @@ stages:
                 RECIPIENT_SECRET_NAME="ftps-leds-notification-to-email"
                 SENDER_SECRET_NAME="ftps-leds-notification-from-email"
                 MAIL_RELAY_SECRET_NAME="ftps-leds-notification-mail-relay"
+
+                RECIPIENT_EMAIL_OVERRIDE="${RECIPIENT_EMAIL_OVERRIDE:-}"
+                SENDER_EMAIL_OVERRIDE="${SENDER_EMAIL_OVERRIDE:-}"
+                MAIL_RELAY_OVERRIDE="${MAIL_RELAY_OVERRIDE:-}"
 
                 DOCS_DIR="$(System.DefaultWorkingDirectory)/docs"
                 if [[ "${{ parameters.refreshCertificateEnvironment }}" == "$ENVIRONMENT" && "${{ parameters.refreshSecretsEnvironment }}" != "$ENVIRONMENT" ]]; then
@@ -431,7 +328,6 @@ stages:
                   CHANGE_TYPE="FTPS runtime secret update"
                 fi
 
-                RECIPIENT_EMAIL_OVERRIDE="${{ parameters.ledsNotificationRecipientEmailOverride }}"
                 if [[ -n "$RECIPIENT_EMAIL_OVERRIDE" ]]; then
                   RECIPIENT_EMAIL="$RECIPIENT_EMAIL_OVERRIDE"
                   echo "Using recipient email override: $RECIPIENT_EMAIL"
@@ -443,7 +339,6 @@ stages:
                     --output tsv)
                 fi
 
-                SENDER_EMAIL_OVERRIDE="${{ parameters.ledsNotificationSenderEmailOverride }}"
                 if [[ -n "$SENDER_EMAIL_OVERRIDE" ]]; then
                   SENDER_EMAIL="$SENDER_EMAIL_OVERRIDE"
                   echo "Using sender email override: $SENDER_EMAIL"
@@ -455,7 +350,6 @@ stages:
                     --output tsv)
                 fi
 
-                MAIL_RELAY_OVERRIDE="${{ parameters.ledsNotificationMailRelayOverride }}"
                 if [[ -n "$MAIL_RELAY_OVERRIDE" ]]; then
                   MAIL_RELAY="$MAIL_RELAY_OVERRIDE"
                   echo "Using SMTP relay override: $MAIL_RELAY"
@@ -500,7 +394,8 @@ stages:
                 } > "$EMAIL_FILE"
 
                 echo "Sending LEDS notification email to $RECIPIENT_EMAIL via $MAIL_RELAY"
-                curl --silent --show-error \
+                trap 'rm -f "$EMAIL_FILE"' EXIT
+                curl --silent --show-error --fail-with-body \
                   "smtp://$MAIL_RELAY" \
                   --mail-from "$SENDER_EMAIL" \
                   --mail-rcpt "$RECIPIENT_EMAIL" \

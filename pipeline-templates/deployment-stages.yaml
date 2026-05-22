@@ -1,0 +1,146 @@
+parameters:
+  - name: overrideAction
+    type: string
+  - name: refreshCertificateEnvironment
+    type: string
+  - name: refreshSecretsEnvironment
+    type: string
+  - name: refreshAlertsOnly
+    type: boolean
+  - name: agentImage
+    type: string
+  - name: timeoutInMinutes
+    type: number
+  - name: product
+    type: string
+  - name: terraformInitSubscription
+    type: string
+  - name: environment_components
+    type: object
+    default:
+      - deployment: "nonprod_core"
+        environment: "nonprod"
+        component: "core"
+        service_connection: "HMCTS-HUB-NONPROD-INTSVC"
+        dependsOn: "TerraformPrecheck"
+      - deployment: "nonprod_container_app"
+        environment: "nonprod"
+        component: "container-app"
+        service_connection: "HMCTS-HUB-NONPROD-INTSVC"
+        dependsOn:
+          - "nonprod_core"
+          - "AppBuildPublish"
+      - deployment: "prod_core"
+        environment: "prod"
+        component: "core"
+        service_connection: "HMCTS-HUB-PROD-INTSVC"
+        dependsOn: "nonprod_core"
+      - deployment: "prod_container_app"
+        environment: "prod"
+        component: "container-app"
+        service_connection: "HMCTS-HUB-PROD-INTSVC"
+        dependsOn:
+          - "prod_core"
+          - "nonprod_container_app"
+
+stages:
+  - ${{ each deployment in parameters.environment_components }}:
+      - stage: ${{ deployment.deployment }}
+        dependsOn: ${{ deployment.dependsOn }}
+        ${{ if eq(deployment.component, 'core') }}:
+          condition: and(eq('${{ parameters.refreshCertificateEnvironment }}', 'none'), eq('${{ parameters.refreshSecretsEnvironment }}', 'none'))
+        ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'nonprod')) }}:
+          condition: >-
+            and(
+              eq('${{ parameters.refreshCertificateEnvironment }}', 'none'),
+              eq('${{ parameters.refreshSecretsEnvironment }}', 'none'),
+              succeeded('${{ deployment.environment }}_core'),
+              in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
+            )
+          variables:
+            - name: log_analytics_workspace_id
+              value: $[stageDependencies.${{ deployment.environment
+                }}_core.TerraformPlanApply.outputs['terraformOutputs.log_analytics_workspace_id']]
+            - name: container_apps_subnet_id
+              value: $[stageDependencies.${{ deployment.environment
+                }}_core.TerraformPlanApply.outputs['terraformOutputs.container_apps_subnet_id']]
+        ${{ if and(eq(deployment.component, 'container-app'), eq(deployment.environment, 'prod')) }}:
+          condition: >-
+            and(
+              eq('${{ parameters.refreshCertificateEnvironment }}', 'none'),
+              eq('${{ parameters.refreshSecretsEnvironment }}', 'none'),
+              succeeded('${{ deployment.environment }}_core'),
+              in(dependencies.AppBuildPublish.result, 'Succeeded', 'Skipped')
+            )
+          variables:
+            - name: log_analytics_workspace_id
+              value: $[stageDependencies.${{ deployment.environment
+                }}_core.TerraformPlanApply.outputs['terraformOutputs.log_analytics_workspace_id']]
+            - name: container_apps_subnet_id
+              value: $[stageDependencies.${{ deployment.environment
+                }}_core.TerraformPlanApply.outputs['terraformOutputs.container_apps_subnet_id']]
+        jobs:
+          - job: TerraformPlanApply
+            pool: hmcts-cftptl-agent-pool
+            timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
+            steps:
+              - ${{ if eq(deployment.component, 'container-app') }}:
+                  - task: AzureCLI@2
+                    displayName: "Resolve container app image"
+                    inputs:
+                      azureSubscription: ${{ deployment.service_connection }}
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: |
+                        REFRESH_ALERTS_ONLY="${{ parameters.refreshAlertsOnly }}"
+                        if [[ "${REFRESH_ALERTS_ONLY,,}" == "true" ]]; then
+                          echo "Refresh-alerts-only: looking up current container app image"
+                          CURRENT_IMAGE=$(az containerapp show \
+                            --name "hub-fth-ftps-server-${{ deployment.environment }}" \
+                            --resource-group "file-transfer-hub-${{ deployment.environment }}-rg" \
+                            --query "properties.template.containers[0].image" --output tsv)
+                          echo "Resolved image: $CURRENT_IMAGE"
+                          echo "##vso[task.setvariable variable=container_app_image]$CURRENT_IMAGE"
+                        else
+                          echo "##vso[task.setvariable variable=container_app_image]hmctsprod.azurecr.io/$(imageRepository):$(Build.BuildId)"
+                        fi
+              - template: steps/terraform.yaml@cnp-azuredevops-libraries
+                parameters:
+                  overrideAction: ${{ parameters.overrideAction }}
+                  environment: ${{ deployment.environment}}
+                  component: ${{ deployment.component }}
+                  serviceConnection: ${{ deployment.service_connection }}
+                  product: ${{ parameters.product }}
+                  terraformInitSubscription: ${{ parameters.terraformInitSubscription }}
+                  ${{ if eq(deployment.environment, 'nonprod') }}:
+                    backendResourceGroupName: azure-control-stg-rg
+                  ${{ if eq(deployment.component, 'container-app') }}:
+                    planCommandOptions: >-
+                      -var
+                      "log_analytics_workspace_id=$(log_analytics_workspace_id)"
+                      -var
+                      "container_apps_subnet_id=$(container_apps_subnet_id)"
+                      -var
+                      "container_app_image=$(container_app_image)"
+              - ${{ if eq(deployment.component, 'core') }}:
+                  - task: AzureCLI@2
+                    name: terraformOutputs
+                    displayName: "Capture Terraform Outputs"
+                    inputs:
+                      azureSubscription: ${{ deployment.service_connection }}
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      addSpnToEnvironment: true
+                      inlineScript: |
+                        cd $(System.DefaultWorkingDirectory)/file-transfer-hub/components/core
+
+                        export ARM_CLIENT_ID=$servicePrincipalId
+                        export ARM_CLIENT_SECRET=$servicePrincipalKey
+                        export ARM_TENANT_ID=$tenantId
+                        export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                        LOG_ANALYTICS_ID=$(terraform output -raw log_analytics_workspace_id)
+                        SUBNET_ID=$(terraform output -raw container_apps_subnet_id)
+
+                        echo "##vso[task.setvariable variable=log_analytics_workspace_id;isOutput=true]$LOG_ANALYTICS_ID"
+                        echo "##vso[task.setvariable variable=container_apps_subnet_id;isOutput=true]$SUBNET_ID"

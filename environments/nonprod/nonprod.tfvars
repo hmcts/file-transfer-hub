@@ -11,8 +11,8 @@ address_space = {
 
 container_app = {
   # Set to true only in a short-lived test branch when you want the deployed
-  # Container App revision to fail image pull and trigger the no-replica alert.
-  failure_test_invalid_image = true
+  # Container App revision to exit during startup and trigger the no-replica alert.
+  failure_test_runtime_exit = true
 }
 
 hub = {

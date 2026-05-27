@@ -6,13 +6,14 @@ COMPOSE_PROJECT_PREFIX="ftps-local-smoke"
 PRESERVE_STACK="${FTPS_TEST_PRESERVE_STACK:-false}"
 TEMP_DIR="$(mktemp -d "${SCRIPT_DIR}/.ftps-local-smoke.XXXXXX")"
 TEST_TIMESTAMP="$(date +%s)"
-ALL_CASES=(pem pem-delete-after pem-special-target-password pkcs12-chain)
+ALL_CASES=(pem pem-delete-after pem-special-target-password pkcs12-chain runtime-exit)
 KNOWN_COMPOSE_PROJECTS=(
     "${COMPOSE_PROJECT_PREFIX}"
     "${COMPOSE_PROJECT_PREFIX}-pem"
     "${COMPOSE_PROJECT_PREFIX}-pem-delete-after"
     "${COMPOSE_PROJECT_PREFIX}-pem-special-target-password"
     "${COMPOSE_PROJECT_PREFIX}-pkcs12-chain"
+    "${COMPOSE_PROJECT_PREFIX}-runtime-exit"
 )
 
 CURRENT_COMPOSE_PROJECT_NAME=""
@@ -106,11 +107,13 @@ Available cases:
     pem-delete-after
     pem-special-target-password
   pkcs12-chain
+    runtime-exit
 
 Examples:
   ./test-local-ftps.sh
   ./test-local-ftps.sh pem
   ./test-local-ftps.sh pkcs12-chain
+    ./test-local-ftps.sh runtime-exit
 EOF
 }
 
@@ -243,6 +246,32 @@ wait_for_forwarded_file() {
     return 1
 }
 
+wait_for_container_exit() {
+    local service_name="$1"
+    local attempt container_id
+
+    for attempt in $(seq 1 30); do
+        container_id="$(compose ps -q "${service_name}")"
+
+        if [[ -z "${container_id}" ]]; then
+            echo "Container ${service_name} was not created" >&2
+            return 1
+        fi
+
+        if [[ "$(docker inspect -f '{{.State.Running}}' "${container_id}")" == "false" ]]; then
+            printf 'Container %s exited after %s attempt(s)\n' "${service_name}" "${attempt}"
+            return 0
+        fi
+
+        printf 'Waiting for %s to exit (%s/30)\n' "${service_name}" "${attempt}"
+        sleep 2
+    done
+
+    echo "Container ${service_name} did not exit in time" >&2
+    compose logs "${service_name}" >&2 || true
+    return 1
+}
+
 base64_no_wrap() {
     openssl base64 -A -in "$1"
 }
@@ -334,6 +363,12 @@ prepare_pkcs12_chain_case() {
     CURRENT_CERTIFICATE_PATH="${FTPS_CERTIFICATE_PATH}"
 }
 
+prepare_runtime_exit_case() {
+    prepare_pem_case "$1"
+
+    export FTPS_FAILURE_TEST_RUNTIME_EXIT="true"
+}
+
 assert_container_logs_contain() {
     local expected_message="$1"
     local container_logs
@@ -407,6 +442,9 @@ run_smoke_case() {
         pkcs12-chain)
             prepare_pkcs12_chain_case "${case_dir}" || return 1
             ;;
+        runtime-exit)
+            prepare_runtime_exit_case "${case_dir}" || return 1
+            ;;
         *)
             echo "Unknown smoke test case: ${case_name}" >&2
             return 1
@@ -415,6 +453,18 @@ run_smoke_case() {
 
     cleanup_known_smoke_projects
     compose up -d --build || return 1
+
+    if [[ "${case_name}" == "runtime-exit" ]]; then
+        wait_for_container_exit ftps || return 1
+        assert_container_logs_contain "Failure-test runtime exit enabled; exiting before service startup to simulate a broken container app revision" || return 1
+
+        if [[ "${PRESERVE_STACK}" != "true" ]]; then
+            compose_down
+        fi
+
+        unset FTPS_FAILURE_TEST_RUNTIME_EXIT
+        return 0
+    fi
 
     wait_for_ftps || return 1
 
@@ -472,6 +522,8 @@ run_smoke_case() {
     if [[ "${PRESERVE_STACK}" != "true" ]]; then
         compose_down
     fi
+
+    unset FTPS_FAILURE_TEST_RUNTIME_EXIT
 }
 
 require_command docker

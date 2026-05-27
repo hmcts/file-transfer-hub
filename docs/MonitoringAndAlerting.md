@@ -23,6 +23,80 @@ Azure Container Apps does not expose a "ready replica" metric directly. The aler
 
 The alert resource is named `file-transfer-hub-<env>-ftps-no-replicas` and the action group is named `file-tran-hub-<env>-alerts`.
 
+## Switch reference
+
+These are the main switches that control monitoring behaviour, alert maintenance, and alert testing.
+
+| Switch | Location | Default | Effect |
+|--------|----------|---------|--------|
+| `maintenance_mode` | Environment tfvars | `false` | Disables alerting for the environment. The action group and no-replica metric alert are not created, or are removed on the next apply. |
+| `monitoring.enabled` | Environment tfvars | `true` | Enables or disables alerting without using maintenance mode. Set to `false` when the environment should not have alerting at all. |
+| `refreshAlertsOnly` | Azure DevOps pipeline parameter | `false` | Skips the image build stage and keeps the currently deployed FTPS image, so the pipeline only refreshes alert-email related Terraform changes. |
+| `container_app.failure_test_runtime_exit` | Environment tfvars | `false` | Sets an FTPS runtime test flag that makes the container exit during startup, which is useful for proving the no-replica alert and email path without breaking the Terraform apply. |
+
+### `maintenance_mode`
+
+Use this when planned work or first-time environment setup would otherwise create noisy or expected alerts.
+
+```hcl
+maintenance_mode = true
+```
+
+Effect on apply:
+
+- alert email Key Vault secrets are not read by the `container-app` Terraform
+- the action group is not created
+- the no-replica alert is not created
+
+Remove the line or set it back to `false` and run `apply` again to restore alerting.
+
+### `monitoring.enabled`
+
+Use this when alerting should stay off for an environment, rather than being temporarily silenced.
+
+```hcl
+monitoring = {
+  enabled = false
+}
+```
+
+This differs from `maintenance_mode` mainly in intent: `maintenance_mode` is a temporary operational switch, while `monitoring.enabled = false` is a configuration choice for the environment.
+
+### `refreshAlertsOnly`
+
+Use this pipeline switch after changing alert email addresses in Key Vault, or when you want to refresh alert configuration without rebuilding or redeploying a new FTPS image.
+
+When `refreshAlertsOnly` is enabled:
+
+- the Docker image build stage is skipped
+- the pipeline resolves and keeps the currently deployed FTPS image
+- the `container-app` Terraform apply re-reads the Key Vault secrets and updates the action group configuration
+
+This is the lowest-risk way to update alert recipients.
+
+### `container_app.failure_test_runtime_exit`
+
+Use this only in a short-lived test branch when you want the Container App to fail to start and trigger the no-replica alert.
+
+```hcl
+container_app = {
+  failure_test_runtime_exit = true
+}
+```
+
+Effect on apply:
+
+- the pipeline still builds and publishes the normal image
+- Terraform deploys the normal image and sets a test-only runtime flag
+- the FTPS entrypoint exits before service startup
+- Azure Container Apps keeps trying to restart the broken revision
+- the FTPS app ends up with zero running replicas
+- the `Replicas < 1` alert should fire on the next evaluation cycle
+
+This is preferred over using an invalid image tag because the Container App update itself can still complete cleanly.
+
+After the test, set `failure_test_runtime_exit = false` or remove the override and apply again so the service can recover.
+
 ## When the email alert fires
 
 With the default settings, Azure Monitor evaluates the rule every `5 minutes` and looks back over the previous `5 minutes`.

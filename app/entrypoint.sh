@@ -26,6 +26,7 @@ export FTPS_ENABLE_STORAGE_FORWARD="${FTPS_ENABLE_STORAGE_FORWARD:-true}"
 export FTPS_FORWARD_INTERVAL_SECONDS="${FTPS_FORWARD_INTERVAL_SECONDS:-60}"
 export FTPS_FORWARD_LOCAL_DIR="${FTPS_FORWARD_LOCAL_DIR:-${FTPS_LOCAL_UPLOAD_DIR}}"
 export FTPS_FORWARD_DELETE_AFTER="${FTPS_FORWARD_DELETE_AFTER:-false}"
+export FTPS_FAILURE_TEST_RUNTIME_EXIT="${FTPS_FAILURE_TEST_RUNTIME_EXIT:-false}"
 
 ftps_log() {
     printf '[ftps-entrypoint] %s\n' "$*"
@@ -413,6 +414,11 @@ sed -i 's/^#\?LoadModule mod_tls.c/LoadModule mod_tls.c/' /etc/proftpd/modules.c
 envsubst < /etc/proftpd/proftpd-ftps.conf.template > /etc/proftpd/conf.d/hmcts-ftps.conf
 
 ftps_log "ProFTPD configuration rendered"
+
+if [[ "${FTPS_FAILURE_TEST_RUNTIME_EXIT}" == "true" ]]; then
+    ftps_warn "Failure-test runtime exit enabled; exiting before service startup to simulate a broken container app revision"
+    exit 1
+fi
 
 if [[ "${FTPS_ENABLE_STORAGE_FORWARD}" == "true" ]]; then
     ftps_log "Starting background storage forwarding loop"

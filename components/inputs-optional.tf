@@ -49,6 +49,8 @@ variable "monitoring" {
   type = object({
     enabled                      = optional(bool, true)
     alert_email_secret_names     = optional(list(string), ["ftps-alert-email-1", "ftps-alert-email-2", "ftps-alert-email-3"])
+    restart_alert_threshold      = optional(number, 2)
+    restart_alert_window_size    = optional(string, "PT15M")
     no_replica_alert_frequency   = optional(string, "PT5M")
     no_replica_alert_window_size = optional(string, "PT5M")
     no_replica_alert_severity    = optional(number, 1)

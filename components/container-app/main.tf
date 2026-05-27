@@ -445,12 +445,38 @@ resource "azapi_update_resource" "ftps_passive_ports" {
   }
 }
 
+resource "azurerm_monitor_metric_alert" "ftps_restart_alert" {
+  count               = local.ftps_no_replica_alert_enabled ? 1 : 0
+  name                = "${local.name}-ftps-restart-count"
+  resource_group_name = "${local.name}-rg"
+  scopes              = [module.container_app.container_app_ids["ftps-server"]]
+  description         = "Alert when the FTPS container has restarted more than ${var.monitoring.restart_alert_threshold} times in the evaluation window, indicating the service is crash-looping and unavailable to users."
+  severity            = var.monitoring.no_replica_alert_severity
+  enabled             = true
+  auto_mitigate       = true
+  frequency           = "PT5M"
+  window_size         = var.monitoring.restart_alert_window_size
+  tags                = module.ctags.common_tags
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerapps"
+    metric_name      = "RestartCount"
+    aggregation      = "Total"
+    operator         = "GreaterThan"
+    threshold        = var.monitoring.restart_alert_threshold
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.ftps_container_health[0].id
+  }
+}
+
 resource "azurerm_monitor_metric_alert" "ftps_no_replicas" {
   count               = local.ftps_no_replica_alert_enabled ? 1 : 0
   name                = "${local.name}-ftps-no-replicas"
   resource_group_name = "${local.name}-rg"
   scopes              = [module.container_app.container_app_ids["ftps-server"]]
-  description         = "Alert when the FTPS container app has no active replicas. Azure Container Apps does not expose a ready replica metric, so this alert uses the Replica count metric as the closest supported signal."
+  description         = "Alert when the FTPS container app has zero active replicas, indicating the service has been stopped or deprovisioned entirely."
   severity            = var.monitoring.no_replica_alert_severity
   enabled             = true
   auto_mitigate       = true

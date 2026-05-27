@@ -6,9 +6,28 @@
 
 ## What is monitored
 
-The FTPS container app runs as a single replica (min = 1, max = 1). The primary alert watches for that replica disappearing — for example if the container crashes and fails to restart, or if a failed deployment leaves the app with zero running instances.
+The FTPS container app runs as a single replica (min = 1, max = 1). Two complementary alerts cover different failure modes.
 
-Azure Container Apps does not expose a "ready replica" metric directly. The alert uses the closest available signal: the `Replicas` metric in the `Microsoft.App/containerapps` namespace. The alert fires when the **maximum** replica count over the evaluation window is **less than 1**.
+### Primary alert — restart count (crash-loop detection)
+
+The primary alert fires when the container has restarted more than the configured threshold within the evaluation window. This is the main signal for a live service failure: if ProFTPD crashes or the container exits unexpectedly, Azure Container Apps will keep restarting it, and the restart count will climb. Each restart represents a period when the FTPS service was unavailable.
+
+| Setting | Default | Variable |
+|---------|---------|----------|
+| Metric namespace | `Microsoft.App/containerapps` | — |
+| Metric name | `RestartCount` | — |
+| Aggregation | Total | — |
+| Operator | GreaterThan | — |
+| Threshold | 2 restarts | `monitoring.restart_alert_threshold` |
+| Evaluation frequency | Every 5 minutes | — |
+| Evaluation window | Last 15 minutes | `monitoring.restart_alert_window_size` |
+| Severity | 1 (Critical) | `monitoring.no_replica_alert_severity` |
+
+The alert resource is named `file-transfer-hub-<env>-ftps-restart-count`.
+
+### Secondary alert — zero replicas (stopped or deprovisioned)
+
+The secondary alert fires when the replica count drops to zero entirely — for example if someone stops the Container App manually, if a deployment deprovisioned it, or if Azure scaled it to zero. A crash-looping container still registers as one replica in this metric, so this alert is not useful for detecting crashes; it exists to catch accidental or unexpected deprovisionings.
 
 | Setting | Default | Variable |
 |---------|---------|----------|
@@ -21,7 +40,7 @@ Azure Container Apps does not expose a "ready replica" metric directly. The aler
 | Evaluation window | Last 5 minutes | `monitoring.no_replica_alert_window_size` |
 | Severity | 1 (Critical) | `monitoring.no_replica_alert_severity` |
 
-The alert resource is named `file-transfer-hub-<env>-ftps-no-replicas` and the action group is named `file-tran-hub-<env>-alerts`.
+The alert resource is named `file-transfer-hub-<env>-ftps-no-replicas`. The action group for both alerts is named `file-tran-hub-<env>-alerts`.
 
 ## Switch reference
 
@@ -32,7 +51,7 @@ These are the main switches that control monitoring behaviour, alert maintenance
 | `maintenance_mode` | Environment tfvars | `false` | Disables alerting for the environment. The action group and no-replica metric alert are not created, or are removed on the next apply. |
 | `monitoring.enabled` | Environment tfvars | `true` | Enables or disables alerting without using maintenance mode. Set to `false` when the environment should not have alerting at all. |
 | `refreshAlertsOnly` | Azure DevOps pipeline parameter | `false` | Skips the image build stage and keeps the currently deployed FTPS image, so the pipeline only refreshes alert-email related Terraform changes. |
-| `container_app.failure_test_runtime_exit` | Environment tfvars | `false` | Sets an FTPS runtime test flag that makes the container exit during startup, which is useful for proving the no-replica alert and email path without breaking the Terraform apply. |
+| `container_app.failure_test_runtime_exit` | Environment tfvars | `false` | Sets an FTPS runtime test flag that makes the container exit during startup. The container keeps crash-looping, which increments `RestartCount` and triggers the primary restart-count alert within one evaluation window (15 minutes). |
 
 ### `maintenance_mode`
 
@@ -89,26 +108,25 @@ Effect on apply:
 - the pipeline still builds and publishes the normal image
 - Terraform deploys the normal image and sets a test-only runtime flag
 - the FTPS entrypoint exits before service startup
-- Azure Container Apps keeps trying to restart the broken revision
-- the FTPS app ends up with zero running replicas
-- the `Replicas < 1` alert should fire on the next evaluation cycle
+- Azure Container Apps keeps trying to restart the broken revision, incrementing `RestartCount`
+- the primary `RestartCount > 2` alert fires within the first 15-minute evaluation window
 
-This is preferred over using an invalid image tag because the Container App update itself can still complete cleanly.
+This is preferred over using an invalid image tag because the Container App update itself can still complete cleanly, and the crash-loop correctly exercises the primary alert path.
 
 After the test, set `failure_test_runtime_exit = false` or remove the override and apply again so the service can recover.
 
 ## When the email alert fires
 
-With the default settings, Azure Monitor evaluates the rule every `5 minutes` and looks back over the previous `5 minutes`.
+**Restart-count alert (primary):** Azure Monitor evaluates every 5 minutes and looks back over the previous 15 minutes. If the container has restarted more than 2 times in that window, the alert fires — typically within **up to 20 minutes** of a persistent crash-loop starting.
 
-That means if the FTPS container drops to zero replicas and stays there, the alert will normally fire on the next evaluation cycle, typically within **up to 5 minutes** of the failure.
+**Replicas alert (secondary):** Azure Monitor evaluates every 5 minutes and looks back over the previous 5 minutes. If the replica count is 0 throughout that window, the alert fires within **up to 5 minutes**.
 
-The rule is configured with `auto_mitigate = true`, so Azure Monitor does not treat this as a brand-new alert every 5 minutes forever. Instead, the usual behaviour is:
+Both rules are configured with `auto_mitigate = true`, so Azure Monitor does not repeat the alert every evaluation cycle. The usual behaviour is:
 
 - Azure raises the alert when the condition is first detected.
-- The alert remains active while the replica count stays below `1`.
-- Azure may send a resolution notification when the container recovers, depending on notification handling in Azure Monitor.
-- If the container recovers and later fails again, Azure can raise a new alert for that new failure.
+- The alert remains active while the condition persists.
+- Azure may send a resolution notification when the service recovers, depending on notification handling in Azure Monitor.
+- If the service recovers and later fails again, Azure can raise a new alert for that new failure.
 
 ---
 
@@ -116,19 +134,22 @@ The rule is configured with `auto_mitigate = true`, so Azure Monitor does not tr
 
 If the alert fires too often (for example during a planned deployment that causes a brief replica gap), you can widen the evaluation window or increase the frequency so that short transient dips do not trigger it.
 
-All three tuning inputs live in the `monitoring` variable block. They can be overridden per environment in the relevant `environments/<env>/<env>.tfvars` file:
+All tuning inputs live in the `monitoring` variable block. They can be overridden per environment in the relevant `environments/<env>/<env>.tfvars` file:
 
 ```hcl
 monitoring = {
-  no_replica_alert_frequency   = "PT5M"   # How often Azure evaluates the metric
-  no_replica_alert_window_size = "PT15M"  # How far back each evaluation looks
-  no_replica_alert_severity    = 2        # 0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose
+  restart_alert_threshold      = 2        # Restart-count alert: number of restarts before firing
+  restart_alert_window_size    = "PT15M"  # Restart-count alert: how far back each evaluation looks
+  no_replica_alert_frequency   = "PT5M"   # Replicas alert: how often Azure evaluates the metric
+  no_replica_alert_window_size = "PT5M"   # Replicas alert: how far back each evaluation looks
+  no_replica_alert_severity    = 2        # Both alerts: 0 = Critical, 1 = Error, 2 = Warning, 3 = Informational, 4 = Verbose
 }
 ```
 
 **Common adjustments:**
 
-- Reduce noise during deployments — set `no_replica_alert_window_size = "PT15M"` so the alert only fires if the replica is absent for the full 15-minute window rather than a single 5-minute snapshot.
+- Reduce restart-count noise — increase `restart_alert_threshold` (e.g., `5`) if brief single restarts are expected during deployments.
+- Reduce replica-alert noise during deployments — set `no_replica_alert_window_size = "PT15M"` so the alert only fires if the replica is absent for the full 15-minute window.
 - Downgrade urgency — change `no_replica_alert_severity = 2` (Warning) if the Sev 1 emails are causing on-call fatigue.
 - Disable entirely — set `monitoring = { enabled = false }` in the tfvars for an environment where alerting is not required.
 - **Maintenance mode** — set `maintenance_mode = true` at the top level of the environment tfvars to silence all alerts while the environment is under active development or planned work (see [Maintenance mode](#maintenance-mode) below).

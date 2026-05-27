@@ -59,6 +59,7 @@ resource "azurerm_monitor_action_group" "ftps_container_health" {
 locals {
   acr_registry_id               = "/subscriptions/${var.acr.subscription_id}/resourceGroups/${var.acr.resource_group_name}/providers/Microsoft.ContainerRegistry/registries/${var.acr.name}"
   ftps_certificate_key_vault_id = coalesce(var.ftps.certificate_key_vault_id, data.azurerm_key_vault.this.id)
+  ftps_container_image          = var.container_app.failure_test_invalid_image ? "${coalesce(var.container_app_image, var.container_app.image)}-alert-test-invalid" : coalesce(var.container_app_image, var.container_app.image)
   ftps_additional_user_secret_name = coalesce(
     try(var.ftps.additional_user_secret_name, null),
     var.env == "nonprod" ? "ho-moj-ftps-demo-username" : null
@@ -326,7 +327,7 @@ module "container_app" {
       key_vault_secrets     = local.ftps_key_vault_secrets
       containers = {
         ftps-server = {
-          image  = coalesce(var.container_app_image, var.container_app.image)
+          image  = local.ftps_container_image
           cpu    = var.container_app.cpu
           memory = var.container_app.memory
           env    = local.ftps_container_env
@@ -353,7 +354,7 @@ resource "terraform_data" "ftps_container_app_id" {
 resource "terraform_data" "ftps_passive_ports_configuration" {
   input = {
     container_app_id         = module.container_app.container_app_ids["ftps-server"]
-    image                    = coalesce(var.container_app_image, var.container_app.image)
+    image                    = local.ftps_container_image
     listen_port              = var.ftps.listen_port
     passive_ports            = local.ftps_passive_ports
     registry_server          = var.acr.login_server
@@ -404,7 +405,7 @@ resource "azapi_update_resource" "ftps_passive_ports" {
         containers = [
           {
             name  = "ftps-server"
-            image = coalesce(var.container_app_image, var.container_app.image)
+            image = local.ftps_container_image
             resources = {
               cpu    = var.container_app.cpu
               memory = var.container_app.memory

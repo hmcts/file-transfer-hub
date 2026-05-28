@@ -27,10 +27,10 @@ The FTPS runtime expects these Key Vault secrets to exist:
 The optional LEDS notification stage for refresh runs also expects these service Key Vault secrets when `sendLEDSNotificationEmail = true`:
 
 - `ftps-leds-notification-to-email`: recipient mailbox for the LEDS notification email
-- `ftps-leds-notification-from-email`: `From` and `Reply-To` address on the notification email
-- `ftps-leds-notification-mail-relay`: SMTP relay FQDN used to deliver the notification (`hostname` or `hostname:port`; plain SMTP, no authentication)
+- `ftps-leds-notification-from-email`: `From` and `Reply-To` address on the notification email — must be on a domain authenticated with the SendGrid `bau` account (e.g. `noreply@mail-bau.platform.hmcts.net` for prod, `noreply@mail-bau-nonprod.platform.hmcts.net` for nonprod)
+- `ftps-leds-notification-sendgrid-api-key`: SendGrid API key for the `platops` sub-user account (Mail Send permission)
 
-The notification stage sends email via `curl` SMTP through the configured relay. No Graph API permissions are required.
+The notification stage sends email via the SendGrid Web API v3. No Graph API permissions are required.
 
 ## Environment Behavior
 

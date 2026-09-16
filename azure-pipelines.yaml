@@ -310,6 +310,8 @@ stages:
                   -e "s|{{PIPELINE_URL}}|$PIPELINE_URL|g" \
                   "$TEMPLATE_PATH")
 
+                echo "Sending email: $EMAIL_BODY"
+
                 EMAIL_SUBJECT="File Transfer Hub $ENVIRONMENT $CHANGE_TYPE"
                 SENDGRID_PAYLOAD=$(jq -n \
                   --arg to "$RECIPIENT_EMAIL" \
